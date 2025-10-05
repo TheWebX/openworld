@@ -21,9 +21,13 @@ const sun = new THREE.DirectionalLight(0xffffff, 0.7)
 sun.position.set(0.5, 1, 0.3)
 scene.add(sun)
 
-// Ground grid
-const grid = new THREE.GridHelper(400, 200, 0x444444, 0x888888)
-scene.add(grid)
+// Ground plane (grass style)
+const groundGeom = new THREE.PlaneGeometry(2000, 2000)
+groundGeom.rotateX(-Math.PI / 2)
+const groundMat = new THREE.MeshLambertMaterial({ color: 0x6aa84f })
+const ground = new THREE.Mesh(groundGeom, groundMat)
+ground.receiveShadow = false
+scene.add(ground)
 
 // Player visuals and blocks
 const playerMeshes = new Map()
@@ -34,12 +38,62 @@ const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 
 function blockKey(x, y, z) { return `${x},${y},${z}` }
 
+function createSteveMesh(id) {
+  const group = new THREE.Group()
+  const isSelf = id === myId
+
+  const legsH = 0.8, bodyH = 0.8, headH = 0.2
+  const legW = 0.22, legD = 0.22
+  const bodyW = 0.5, bodyD = 0.28
+  const armW = 0.18, armD = 0.18, armH = 0.8
+
+  const skin = 0xffd7b3
+  const shirt = isSelf ? 0x3da5ff : 0x5ca56a
+  const pants = 0x2a4b8d
+
+  // legs
+  const legGeom = new THREE.BoxGeometry(legW, legsH, legD)
+  const legMat = new THREE.MeshLambertMaterial({ color: pants })
+  const legOffsetX = (legW / 2) + 0.05
+  const legY = legsH / 2
+  const leftLeg = new THREE.Mesh(legGeom, legMat)
+  leftLeg.position.set(-legOffsetX, legY, 0)
+  const rightLeg = new THREE.Mesh(legGeom, legMat)
+  rightLeg.position.set(legOffsetX, legY, 0)
+  group.add(leftLeg, rightLeg)
+
+  // body
+  const bodyGeom = new THREE.BoxGeometry(bodyW, bodyH, bodyD)
+  const bodyMat = new THREE.MeshLambertMaterial({ color: shirt })
+  const body = new THREE.Mesh(bodyGeom, bodyMat)
+  body.position.set(0, legsH + bodyH / 2, 0)
+  group.add(body)
+
+  // arms
+  const armGeom = new THREE.BoxGeometry(armW, armH, armD)
+  const armMat = new THREE.MeshLambertMaterial({ color: skin })
+  const armOffsetX = (bodyW / 2) + (armW / 2)
+  const armY = legsH + armH / 2
+  const leftArm = new THREE.Mesh(armGeom, armMat)
+  leftArm.position.set(-armOffsetX, armY, 0)
+  const rightArm = new THREE.Mesh(armGeom, armMat)
+  rightArm.position.set(armOffsetX, armY, 0)
+  group.add(leftArm, rightArm)
+
+  // head
+  const headGeom = new THREE.BoxGeometry(0.5, headH, 0.5)
+  const headMat = new THREE.MeshLambertMaterial({ color: skin })
+  const head = new THREE.Mesh(headGeom, headMat)
+  head.position.set(0, legsH + bodyH + headH / 2, 0)
+  group.add(head)
+
+  return group
+}
+
 function getOrCreatePlayerMesh(id) {
   let mesh = playerMeshes.get(id)
   if (!mesh) {
-    const geom = new THREE.BoxGeometry(0.6, 1.8, 0.6)
-    const mat = new THREE.MeshLambertMaterial({ color: id === myId ? 0x33aaff : 0xffcc66 })
-    mesh = new THREE.Mesh(geom, mat)
+    mesh = createSteveMesh(id)
     mesh.castShadow = false
     mesh.receiveShadow = false
     scene.add(mesh)
@@ -119,9 +173,9 @@ document.addEventListener('mousemove', (e) => {
 
 function computeInputAxes() {
   let forwardX = Math.sin(yaw)
-  let forwardZ = Math.cos(yaw)
-  let leftX = forwardZ
-  let leftZ = -forwardX
+  let forwardZ = -Math.cos(yaw)
+  let leftX = Math.cos(yaw)
+  let leftZ = Math.sin(yaw)
   let moveX = 0, moveZ = 0
   if (pressed.has('KeyW')) { moveX += forwardX; moveZ += forwardZ }
   if (pressed.has('KeyS')) { moveX -= forwardX; moveZ -= forwardZ }
