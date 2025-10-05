@@ -31,8 +31,9 @@ crosshair.style.opacity = '0'
 document.body.appendChild(crosshair)
 
 // Three.js setup
-const renderer = new THREE.WebGLRenderer({ antialias: true })
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
+const targetDPR = Math.min(window.devicePixelRatio || 1, 1.5)
+renderer.setPixelRatio(targetDPR)
 renderer.setSize(window.innerWidth, window.innerHeight)
 app.appendChild(renderer.domElement)
 
@@ -58,14 +59,14 @@ camera.add(fpGroup)
 fpGroup.visible = false
 let fpRecoil = 0
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.6)
+const ambient = new THREE.AmbientLight(0xffffff, 0.5)
 scene.add(ambient)
-const sun = new THREE.DirectionalLight(0xffffff, 0.7)
+const sun = new THREE.DirectionalLight(0xffffff, 0.65)
 sun.position.set(0.5, 1, 0.3)
 scene.add(sun)
 
 // Ground plane (grass style)
-const groundGeom = new THREE.PlaneGeometry(2000, 2000)
+const groundGeom = new THREE.PlaneGeometry(1200, 1200)
 groundGeom.rotateX(-Math.PI / 2)
 function createGrassTexture() {
   const size = 128
@@ -114,6 +115,7 @@ const blockMaterials = new Map() // type -> material
 let selectedType = 1
 let selectedKind = 'block'
 const raycaster = new THREE.Raycaster()
+raycaster.far = 80
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 const npcRigs = new Map() // id -> rig
 
@@ -194,7 +196,7 @@ function getOrCreateNPCRig(id, kind) {
 
 function getBlockMaterial(type) {
   if (blockMaterials.has(type)) return blockMaterials.get(type)
-  const size = 32
+  const size = 16
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
@@ -223,7 +225,7 @@ function getBlockMaterial(type) {
   ctx.putImageData(img, 0, 0)
   const tex = new THREE.CanvasTexture(canvas)
   tex.magFilter = THREE.NearestFilter
-  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.minFilter = THREE.LinearMipMapLinearFilter || THREE.LinearMipmapLinearFilter
   const transparent = (type === 6 || type === 8)
   const opacity = (type === 6) ? 0.6 : (type === 8 ? 0.35 : 1.0)
   const mat = new THREE.MeshLambertMaterial({ map: tex, transparent, opacity })

@@ -13,6 +13,7 @@ import java.util.Map;
 public class GameLoop {
     private final GameService gameService;
     private final GameWebSocketHandler ws;
+    private long lastBroadcastNanos = 0L;
 
     public GameLoop(GameService gameService, GameWebSocketHandler ws) {
         this.gameService = gameService;
@@ -22,6 +23,12 @@ public class GameLoop {
     @Scheduled(fixedRate = 16)
     public void tickLoop() {
         gameService.tick();
+        // throttle broadcasts to ~20 FPS to reduce bandwidth/CPU
+        long now = System.nanoTime();
+        if (now - lastBroadcastNanos < 50_000_000L) {
+            return;
+        }
+        lastBroadcastNanos = now;
         // broadcast player states
         List<Map<String, Object>> players = new ArrayList<>();
         for (GameService.Player p : gameService.getPlayers().values()) {
