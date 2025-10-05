@@ -34,6 +34,7 @@ public class GameService {
         public Vec3 velocity = new Vec3(0, 0, 0);
         public int hp = 100;
         public String targetPlayerId; // police target
+        public double thinkTimer = 0; // seconds until next decision
         public NPC(String id, String kind) { this.id = id; this.kind = kind; }
     }
 
@@ -49,6 +50,7 @@ public class GameService {
 
     private final Map<String, NPC> npcs = new ConcurrentHashMap<>();
     private final java.util.List<Projectile> projectiles = new java.util.ArrayList<>();
+    private final Map<String, Double> threatByPlayerSeconds = new ConcurrentHashMap<>();
 
     public GameService() {
         seedDemo();
@@ -108,31 +110,73 @@ public class GameService {
         for (Player p : players.values()) {
             applyFlatPhysics(p, dt);
         }
-        // simple NPC wander and police chase
+        // simple NPC wander and social/police behavior
         for (NPC n : npcs.values()) {
+            n.thinkTimer -= dt;
             if ("villager".equals(n.kind)) {
-                if (rng.nextDouble() < 0.02) {
+                if (n.thinkTimer <= 0) {
+                    n.thinkTimer = 0.5 + rng.nextDouble() * 1.0;
+                    // cohesion with nearby villagers
+                    Vec3 center = new Vec3(0, 0, 0);
+                    int count = 0;
+                    for (NPC m : npcs.values()) {
+                        if (m == n || !"villager".equals(m.kind)) continue;
+                        double dx = m.position.x - n.position.x;
+                        double dz = m.position.z - n.position.z;
+                        if (dx*dx + dz*dz < 36) { // within 6m
+                            center.x += m.position.x;
+                            center.z += m.position.z;
+                            count++;
+                        }
+                    }
+                    double vx = 0, vz = 0;
+                    if (count > 0) {
+                        center.x /= count; center.z /= count;
+                        vx += (center.x - n.position.x);
+                        vz += (center.z - n.position.z);
+                    }
+                    // wander
                     double ang = rng.nextDouble() * Math.PI * 2;
-                    n.velocity.x = Math.cos(ang) * 3;
-                    n.velocity.z = Math.sin(ang) * 3;
+                    vx += Math.cos(ang) * 2.0;
+                    vz += Math.sin(ang) * 2.0;
+                    double len = Math.hypot(vx, vz);
+                    if (len > 0) { vx/=len; vz/=len; }
+                    n.velocity.x = vx * 2.5;
+                    n.velocity.z = vz * 2.5;
                 }
             } else if ("police".equals(n.kind)) {
-                // pick nearest player
-                Player nearest = null;
-                double best = Double.MAX_VALUE;
-                for (Player p : players.values()) {
-                    double dx = p.position.x - n.position.x;
-                    double dz = p.position.z - n.position.z;
-                    double d2 = dx*dx + dz*dz;
-                    if (d2 < best) { best = d2; nearest = p; }
-                }
-                if (nearest != null) {
-                    double dx = nearest.position.x - n.position.x;
-                    double dz = nearest.position.z - n.position.z;
-                    double len = Math.hypot(dx, dz);
-                    if (len > 0) { dx/=len; dz/=len; }
-                    n.velocity.x = dx * 4;
-                    n.velocity.z = dz * 4;
+                if (n.thinkTimer <= 0) {
+                    n.thinkTimer = 0.25;
+                    // choose threatened player if any
+                    String target = pickHighestThreatPlayer();
+                    if (target != null) n.targetPlayerId = target;
+                    Player nearest = (n.targetPlayerId != null) ? players.get(n.targetPlayerId) : null;
+                    // if no threat, stay near nearest villager
+                    if (nearest == null) {
+                        NPC nearestVill = null; double best = Double.MAX_VALUE;
+                        for (NPC m : npcs.values()) {
+                            if (!"villager".equals(m.kind)) continue;
+                            double dx = m.position.x - n.position.x;
+                            double dz = m.position.z - n.position.z;
+                            double d2 = dx*dx + dz*dz;
+                            if (d2 < best) { best = d2; nearestVill = m; }
+                        }
+                        if (nearestVill != null) {
+                            double dx = nearestVill.position.x - n.position.x;
+                            double dz = nearestVill.position.z - n.position.z;
+                            double len = Math.hypot(dx, dz);
+                            if (len > 0) { dx/=len; dz/=len; }
+                            n.velocity.x = dx * 3.5;
+                            n.velocity.z = dz * 3.5;
+                        }
+                    } else {
+                        double dx = nearest.position.x - n.position.x;
+                        double dz = nearest.position.z - n.position.z;
+                        double len = Math.hypot(dx, dz);
+                        if (len > 0) { dx/=len; dz/=len; }
+                        n.velocity.x = dx * 4.5;
+                        n.velocity.z = dz * 4.5;
+                    }
                 }
             }
             // integrate and ground collide
@@ -154,10 +198,24 @@ public class GameService {
             for (NPC n : npcs.values()) {
                 if (distance2(pr.position, n.position) < 0.6*0.6) {
                     n.hp -= 25;
+                    if ("villager".equals(n.kind) && pr.ownerPlayerId != null) {
+                        // mark threat for owner
+                        threatByPlayerSeconds.put(pr.ownerPlayerId, 10.0);
+                    }
+                    if (n.hp <= 0) {
+                        npcs.remove(n.id);
+                    }
                     it.remove();
                     break;
                 }
             }
+        }
+        // decay threats
+        java.util.Iterator<Map.Entry<String, Double>> tit = threatByPlayerSeconds.entrySet().iterator();
+        while (tit.hasNext()) {
+            Map.Entry<String, Double> e = tit.next();
+            double v = e.getValue() - dt;
+            if (v <= 0) tit.remove(); else e.setValue(v);
         }
     }
 
@@ -175,6 +233,14 @@ public class GameService {
         Vec3 start = new Vec3(p.position.x, p.position.y + 1.4, p.position.z);
         Vec3 vel = new Vec3(dx * 40, dy * 40, dz * 40);
         projectiles.add(new Projectile(playerId, start, vel, 2.0));
+    }
+
+    private String pickHighestThreatPlayer() {
+        String bestKey = null; double bestVal = -1;
+        for (Map.Entry<String, Double> e : threatByPlayerSeconds.entrySet()) {
+            if (e.getValue() > bestVal) { bestVal = e.getValue(); bestKey = e.getKey(); }
+        }
+        return bestKey;
     }
 
     public Map<String, Player> getPlayers() {
