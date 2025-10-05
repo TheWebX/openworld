@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MC 3D</title>
+    <style>
+      html, body, #app { height: 100%; margin: 0; background: #15171a; }
+      #overlay { position: absolute; inset: 0; display: grid; place-items: center; color: white; font-family: system-ui, sans-serif; }
+      #overlay.hidden { display: none; }
+      #hint { opacity: 0.8; font-size: 14px; margin-top: 8px; }
+    </style>
+    <script type="module" crossorigin src="/assets/index-v9Q1eE0Y.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="overlay">
+      <div>
+        <div style="font-size: 20px; font-weight: 600;">Click to Play</div>
+        <div id="hint">WASD to move, Space to jump, Shift to sprint</div>
+      </div>
+    </div>
+  </body>
+</html>
