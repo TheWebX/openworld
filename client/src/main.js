@@ -72,6 +72,7 @@ const blockMaterials = new Map() // type -> material
 let selectedType = 1
 const raycaster = new THREE.Raycaster()
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+const npcMeshes = new Map() // id -> mesh
 
 function blockKey(x, y, z) { return `${x},${y},${z}` }
 
@@ -265,6 +266,30 @@ function handleState(msg) {
       camera.rotation.set(pitch, yaw, 0, 'YXZ')
     }
   }
+  // NPCs
+  if (Array.isArray(msg.npcs)) {
+    const seen = new Set()
+    for (const n of msg.npcs) {
+      let mesh = npcMeshes.get(n.id)
+      if (!mesh) {
+        const color = n.kind === 'police' ? 0x2244ff : 0xcccc77
+        const geom = new THREE.BoxGeometry(0.6, 1.8, 0.6)
+        const mat = new THREE.MeshLambertMaterial({ color })
+        mesh = new THREE.Mesh(geom, mat)
+        scene.add(mesh)
+        npcMeshes.set(n.id, mesh)
+      }
+      mesh.position.set(n.x, n.y, n.z)
+      seen.add(n.id)
+    }
+    // remove stale
+    for (const [id, mesh] of npcMeshes) {
+      if (!seen.has(id)) {
+        scene.remove(mesh)
+        npcMeshes.delete(id)
+      }
+    }
+  }
 }
 
 // Send inputs at 30 Hz
@@ -298,7 +323,19 @@ window.addEventListener('mousedown', (e) => {
     }
     return
   }
-  if (e.button === 0) { // left: place block
+  if (e.button === 0) {
+    // left click: shoot if aiming at NPC, else place block
+    const npcList = Array.from(npcMeshes.values())
+    const hitsN = raycaster.intersectObjects(npcList, false)
+    if (hitsN.length) {
+      // shoot
+      const dir = new THREE.Vector3()
+      camera.getWorldDirection(dir)
+      socket?.send(JSON.stringify({ type: 'shoot', dir: { x: dir.x, y: dir.y, z: dir.z } }))
+      muzzleFlash()
+      return
+    }
+    // place block
     if (hits.length) {
       const hit = hits[0]
       const cell = hit.object.userData.cell
@@ -326,6 +363,13 @@ window.addEventListener('mousedown', (e) => {
     }
   }
 })
+
+function muzzleFlash() {
+  const flare = new THREE.PointLight(0xffeeaa, 2, 4)
+  flare.position.copy(camera.position)
+  scene.add(flare)
+  setTimeout(() => scene.remove(flare), 60)
+}
 
 function setSelectedType(type) {
   selectedType = type
