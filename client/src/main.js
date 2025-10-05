@@ -432,7 +432,7 @@ window.addEventListener('mousedown', (e) => {
       const dir = new THREE.Vector3()
       camera.getWorldDirection(dir)
       socket?.send(JSON.stringify({ type: 'shoot', dir: { x: dir.x, y: dir.y, z: dir.z } }))
-      muzzleFlash(); playGunshot()
+      muzzleFlash(); playGunshot(); fpRecoil = Math.min(0.25, fpRecoil + 0.12); fpGroup.visible = true
       return
     }
     // place block
@@ -480,6 +480,8 @@ function setSelectedType(type) {
       el.style.background = (selectedKind==='block' && t === selectedType) ? '#444a' : '#222a'
     }
   })
+  crosshair.style.opacity = '0'
+  fpGroup.visible = false
 }
 
 document.querySelectorAll('#hotbar .slot').forEach(el => {
@@ -507,6 +509,8 @@ function setSelectedGun(name) {
     if (el.getAttribute('data-kind')==='gun') { el.style.borderColor = '#fff'; el.style.background = '#444a' }
     else { el.style.borderColor = '#fff3'; el.style.background = '#222a' }
   })
+  crosshair.style.opacity = '1'
+  fpGroup.visible = true
 }
 
 // gunshot audio via WebAudio
@@ -527,6 +531,9 @@ function playGunshot() {
 // Render loop
 function animate() {
   requestAnimationFrame(animate)
+  // apply simple recoil decay for first-person gun
+  fpRecoil *= 0.85
+  fpGroup.position.set(0.35, -0.35, -0.8 - fpRecoil)
   renderer.render(scene, camera)
 }
 animate()

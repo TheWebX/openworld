@@ -79,10 +79,9 @@ public class GameService {
 
     public void onPlayerConnect(String sessionId) {
         Player p = new Player(sessionId);
-        // spawn on top of surface near origin
-        int sx = 0, sz = 0;
-        int sy = getSurfaceY(sx, sz);
-        p.position = new Vec3(sx + 0.5, sy, sz + 0.5);
+        // find safe spawn near origin (avoid water/blocks, ensure headroom)
+        Vec3 spawn = findSafeSpawn(0, 0, 48);
+        p.position = spawn;
         p.onGround = true;
         players.put(sessionId, p);
     }
@@ -527,6 +526,28 @@ public class GameService {
         int y = 0;
         while (y < 64 && blocks.containsKey(key(x, y, z))) y++;
         return y; // first empty space above stack, >=0
+    }
+
+    private Vec3 findSafeSpawn(int cx, int cz, int radius) {
+        for (int r = 0; r <= radius; r++) {
+            for (int dx = -r; dx <= r; dx++) {
+                for (int dz = -r; dz <= r; dz++) {
+                    int x = cx + dx;
+                    int z = cz + dz;
+                    Integer tBelow = getType(x, 0, z);
+                    if (tBelow != null && tBelow == TYPE_WATER) continue;
+                    int y = getSurfaceY(x, z);
+                    // ensure headroom and not water at y
+                    Integer tHere = getType(x, y, z);
+                    if (tHere != null && tHere == TYPE_WATER) continue;
+                    Vec3 candidate = new Vec3(x + 0.5, y, z + 0.5);
+                    if (!collides(candidate.x, candidate.y, candidate.z)) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+        return new Vec3(cx + 0.5, Math.max(0, getSurfaceY(cx, cz)), cz + 0.5);
     }
 
     private void applyFlatPhysics(Player p, double dt) {
