@@ -1,0 +1,40 @@
+package com.example.mcserver.game;
+
+import com.example.mcserver.websocket.GameWebSocketHandler;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Component
+public class GameLoop {
+    private final GameService gameService;
+    private final GameWebSocketHandler ws;
+
+    public GameLoop(GameService gameService, GameWebSocketHandler ws) {
+        this.gameService = gameService;
+        this.ws = ws;
+    }
+
+    @Scheduled(fixedRate = 16)
+    public void tickLoop() {
+        gameService.tick();
+        // broadcast player states
+        List<Map<String, Object>> players = new ArrayList<>();
+        for (GameService.Player p : gameService.getPlayers().values()) {
+            Map<String, Object> ps = new HashMap<>();
+            ps.put("id", p.id);
+            ps.put("x", p.position.x);
+            ps.put("y", p.position.y);
+            ps.put("z", p.position.z);
+            players.add(ps);
+        }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("type", "state");
+        payload.put("players", players);
+        ws.broadcast(payload);
+    }
+}
