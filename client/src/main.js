@@ -156,18 +156,27 @@ document.addEventListener('mousemove', (e) => {
 })
 
 function computeInputAxes() {
-  let forwardX = Math.sin(yaw)
-  let forwardZ = -Math.cos(yaw)
-  let leftX = -Math.cos(yaw)
-  let leftZ = -Math.sin(yaw)
-  let moveX = 0, moveZ = 0
-  if (pressed.has('KeyW')) { moveX += forwardX; moveZ += forwardZ }
-  if (pressed.has('KeyS')) { moveX -= forwardX; moveZ -= forwardZ }
-  if (pressed.has('KeyA')) { moveX += leftX; moveZ += leftZ }
-  if (pressed.has('KeyD')) { moveX -= leftX; moveZ -= leftZ }
-  const len = Math.hypot(moveX, moveZ)
-  if (len > 0) { moveX /= len; moveZ /= len }
-  return { ax: moveX, az: moveZ }
+  // Build movement basis directly from camera orientation to match visuals
+  camera.rotation.set(pitch, yaw, 0, 'YXZ')
+  camera.updateMatrixWorld(true)
+
+  const forward = new THREE.Vector3()
+  camera.getWorldDirection(forward)
+  forward.y = 0
+  if (forward.lengthSq() === 0) forward.set(0, 0, -1)
+  forward.normalize()
+
+  const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize()
+  // left = -right
+
+  let move = new THREE.Vector3(0, 0, 0)
+  if (pressed.has('KeyW')) move.add(forward)
+  if (pressed.has('KeyS')) move.sub(forward)
+  if (pressed.has('KeyD')) move.add(right)
+  if (pressed.has('KeyA')) move.sub(right)
+  // normalize to unit length
+  if (move.lengthSq() > 0) move.normalize()
+  return { ax: move.x, az: move.z }
 }
 
 // WebSocket setup
@@ -225,9 +234,11 @@ window.addEventListener('contextmenu', (e) => e.preventDefault())
 window.addEventListener('mousedown', (e) => {
   if (!pointerLocked) return
   // ray from center
+  camera.rotation.set(pitch, yaw, 0, 'YXZ')
+  camera.updateMatrixWorld(true)
   raycaster.setFromCamera({ x: 0, y: 0 }, camera)
   // Ensure latest camera rotation is used
-  camera.rotation.set(pitch, yaw, 0, 'YXZ')
+  // (matrix updated above)
   const blockList = Array.from(blockMeshes.values())
   const hits = raycaster.intersectObjects(blockList, false)
   // also check ground plane for placement
