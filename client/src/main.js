@@ -70,6 +70,7 @@ let myId = null
 const blockMeshes = new Map() // key: "x,y,z" -> mesh
 const blockMaterials = new Map() // type -> material
 let selectedType = 1
+let selectedKind = 'block'
 const raycaster = new THREE.Raycaster()
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 const npcMeshes = new Map() // id -> mesh
@@ -176,7 +177,8 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') sprint = true
   if (e.code.startsWith('Digit')) {
     const num = parseInt(e.code.slice(5), 10)
-    if (num >= 1 && num <= 5) setSelectedType(num)
+    if (num >= 1 && num <= 5) { selectedKind='block'; setSelectedType(num) }
+    if (num === 6) { setSelectedGun('pistol') }
   }
 })
 
@@ -324,15 +326,11 @@ window.addEventListener('mousedown', (e) => {
     return
   }
   if (e.button === 0) {
-    // left click: shoot if aiming at NPC, else place block
-    const npcList = Array.from(npcMeshes.values())
-    const hitsN = raycaster.intersectObjects(npcList, false)
-    if (hitsN.length) {
-      // shoot
+    if (selectedKind==='gun') {
       const dir = new THREE.Vector3()
       camera.getWorldDirection(dir)
       socket?.send(JSON.stringify({ type: 'shoot', dir: { x: dir.x, y: dir.y, z: dir.z } }))
-      muzzleFlash()
+      muzzleFlash(); playGunshot()
       return
     }
     // place block
@@ -375,26 +373,54 @@ function setSelectedType(type) {
   selectedType = type
   document.querySelectorAll('#hotbar .slot').forEach(el => {
     const t = parseInt(el.getAttribute('data-type'), 10)
-    el.style.borderColor = t === selectedType ? '#fff' : '#fff3'
-    el.style.background = t === selectedType ? '#444a' : '#222a'
+    if (el.getAttribute('data-kind')==='block') {
+      el.style.borderColor = (selectedKind==='block' && t === selectedType) ? '#fff' : '#fff3'
+      el.style.background = (selectedKind==='block' && t === selectedType) ? '#444a' : '#222a'
+    }
   })
 }
 
 document.querySelectorAll('#hotbar .slot').forEach(el => {
   el.addEventListener('click', (e) => {
     e.stopPropagation()
-    const t = parseInt(el.getAttribute('data-type'), 10)
-    setSelectedType(t)
+    const kind = el.getAttribute('data-kind')
+    if (kind==='block') { selectedKind='block'; const t = parseInt(el.getAttribute('data-type'), 10); setSelectedType(t) }
+    if (kind==='gun') { setSelectedGun(el.getAttribute('data-gun')) }
   })
 })
 
 window.addEventListener('wheel', (e) => {
   if (!pointerLocked) return
-  if (e.deltaY > 0) setSelectedType(((selectedType - 1 + 1) % 5) + 1)
-  else if (e.deltaY < 0) setSelectedType(((selectedType - 1 - 1 + 5) % 5) + 1)
+  if (selectedKind==='block') {
+    if (e.deltaY > 0) setSelectedType(((selectedType - 1 + 1) % 5) + 1)
+    else if (e.deltaY < 0) setSelectedType(((selectedType - 1 - 1 + 5) % 5) + 1)
+  }
 })
 
 setSelectedType(1)
+
+function setSelectedGun(name) {
+  selectedKind = 'gun'
+  document.querySelectorAll('#hotbar .slot').forEach(el => {
+    if (el.getAttribute('data-kind')==='gun') { el.style.borderColor = '#fff'; el.style.background = '#444a' }
+    else { el.style.borderColor = '#fff3'; el.style.background = '#222a' }
+  })
+}
+
+// gunshot audio via WebAudio
+function playGunshot() {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)()
+  const o = ctx.createOscillator()
+  const g = ctx.createGain()
+  o.type = 'square'
+  o.frequency.setValueAtTime(800, ctx.currentTime)
+  o.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.1)
+  g.gain.setValueAtTime(0.4, ctx.currentTime)
+  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15)
+  o.connect(g).connect(ctx.destination)
+  o.start()
+  o.stop(ctx.currentTime + 0.16)
+}
 
 // Render loop
 function animate() {

@@ -35,6 +35,7 @@ public class GameService {
         public int hp = 100;
         public String targetPlayerId; // police target
         public double thinkTimer = 0; // seconds until next decision
+        public double shootCooldown = 0; // seconds until next shot
         public NPC(String id, String kind) { this.id = id; this.kind = kind; }
     }
 
@@ -67,6 +68,9 @@ public class GameService {
         public Vec3 position = new Vec3(0, 0, 0);
         public Vec3 velocity = new Vec3(0, 0, 0);
         public boolean onGround = true;
+        public int hp = 100;
+        public double yaw = 0;
+        public double pitch = 0;
         public Player(String id) { this.id = id; }
     }
 
@@ -113,6 +117,7 @@ public class GameService {
         // simple NPC wander and social/police behavior
         for (NPC n : npcs.values()) {
             n.thinkTimer -= dt;
+            n.shootCooldown = Math.max(0, n.shootCooldown - dt);
             if ("villager".equals(n.kind)) {
                 if (n.thinkTimer <= 0) {
                     n.thinkTimer = 0.5 + rng.nextDouble() * 1.0;
@@ -173,9 +178,21 @@ public class GameService {
                         double dx = nearest.position.x - n.position.x;
                         double dz = nearest.position.z - n.position.z;
                         double len = Math.hypot(dx, dz);
-                        if (len > 0) { dx/=len; dz/=len; }
+            if (len > 0) { dx/=len; dz/=len; }
                         n.velocity.x = dx * 4.5;
                         n.velocity.z = dz * 4.5;
+                        // shoot if close enough and cooldown ready
+                        double dist2 = distance2(n.position, nearest.position);
+                        if (dist2 < 15*15 && n.shootCooldown <= 0) {
+                            double sx = n.position.x, sy = n.position.y + 1.4, sz = n.position.z;
+                            double vx = nearest.position.x - sx;
+                            double vy = (nearest.position.y + 1.0) - sy;
+                            double vz = nearest.position.z - sz;
+                            double l = Math.sqrt(vx*vx + vy*vy + vz*vz);
+                            if (l > 0) { vx/=l; vy/=l; vz/=l; }
+                            projectiles.add(new Projectile(null, new Vec3(sx, sy, sz), new Vec3(vx*35, vy*35, vz*35), 2.0));
+                            n.shootCooldown = 0.8;
+                        }
                     }
                 }
             }
@@ -205,6 +222,14 @@ public class GameService {
                     if (n.hp <= 0) {
                         npcs.remove(n.id);
                     }
+                    it.remove();
+                    break;
+                }
+            }
+            // hit players
+            for (Player pl : players.values()) {
+                if (distance2(pr.position, pl.position) < 0.6*0.6) {
+                    pl.hp -= 25;
                     it.remove();
                     break;
                 }
