@@ -130,18 +130,10 @@ public class GameService {
             int cz = rng.nextInt(max - min + 1) + min;
             int rx = 6 + rng.nextInt(8);
             int rz = 6 + rng.nextInt(8);
-            for (int x = cx - rx; x <= cx + rx; x++) {
-                for (int z = cz - rz; z <= cz + rz; z++) {
-                    double nx = (x - cx) / (double) rx;
-                    double nz = (z - cz) / (double) rz;
-                    if (nx * nx + nz * nz <= 1.0) {
-                        if (x % 16 != 0 && z % 16 != 0) { // avoid roads
-                            setBlock(x, 1, z, TYPE_WATER);
-                        }
-                    }
-                }
-            }
+            placeLake(cx, cz, rx, rz);
         }
+        // Ensure at least one lake near spawn
+        placeLake(12, -10, 8, 6);
 
         // Houses near roads (at offsets)
         for (int gx = min; gx <= max; gx += 16) {
@@ -164,6 +156,20 @@ public class GameService {
                 if (t != null && t == TYPE_WATER) continue;
             }
             buildTree(x, z);
+        }
+    }
+
+    private void placeLake(int cx, int cz, int rx, int rz) {
+        for (int x = cx - rx; x <= cx + rx; x++) {
+            for (int z = cz - rz; z <= cz + rz; z++) {
+                double nx = (x - cx) / (double) rx;
+                double nz = (z - cz) / (double) rz;
+                if (nx * nx + nz * nz <= 1.0) {
+                    if (x % 16 != 0 && z % 16 != 0) { // avoid roads
+                        setBlock(x, 1, z, TYPE_WATER);
+                    }
+                }
+            }
         }
     }
 
