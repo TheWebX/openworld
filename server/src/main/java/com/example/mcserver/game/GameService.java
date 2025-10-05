@@ -534,21 +534,33 @@ public class GameService {
                 for (int dz = -r; dz <= r; dz++) {
                     int x = cx + dx;
                     int z = cz + dz;
-                    Integer tBelow = getType(x, 0, z);
-                    if (tBelow != null && tBelow == TYPE_WATER) continue;
-                    int y = getSurfaceY(x, z);
-                    // ensure headroom and not water at y
-                    Integer tHere = getType(x, y, z);
-                    if (tHere != null && tHere == TYPE_WATER) continue;
-                    // spawn 2m above surface
-                    Vec3 candidate = new Vec3(x + 0.5, y + 2.0, z + 0.5);
-                    if (!collides(candidate.x, candidate.y, candidate.z)) {
+                    // find a solid ground y with two blocks headroom above (non-water)
+                    int groundY = -1;
+                    for (int yy = 0; yy <= 8; yy++) {
+                        if (isSolidCell(x, yy, z) && !isSolidCell(x, yy + 1, z) && !isSolidCell(x, yy + 2, z)) {
+                            groundY = yy;
+                            break;
+                        }
+                    }
+                    if (groundY == -1) continue;
+                    Integer tFoot = getType(x, groundY + 1, z);
+                    if (tFoot != null && tFoot == TYPE_WATER) continue;
+                    // spawn 2m above ground level
+                    Vec3 candidate = new Vec3(x + 0.5, groundY + 2.0, z + 0.5);
+                    // try slight upward nudges if still colliding (up to +1m)
+                    boolean ok = false;
+                    for (int step = 0; step <= 5; step++) {
+                        double cy = candidate.y + step * 0.2;
+                        if (!collides(candidate.x, cy, candidate.z)) { candidate = new Vec3(candidate.x, cy, candidate.z); ok = true; break; }
+                    }
+                    if (ok) {
                         return candidate;
                     }
                 }
             }
         }
-        return new Vec3(cx + 0.5, Math.max(0, getSurfaceY(cx, cz)), cz + 0.5);
+        // fallback above origin
+        return new Vec3(cx + 0.5, 2.0, cz + 0.5);
     }
 
     private void applyFlatPhysics(Player p, double dt) {
