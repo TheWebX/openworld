@@ -95,6 +95,9 @@ public class GameService {
         double az = input.path("az").asDouble(0);
         boolean jump = input.path("jump").asBoolean(false);
         boolean sprint = input.path("sprint").asBoolean(false);
+        // camera orientation (for third-person visuals)
+        p.yaw = input.path("yaw").asDouble(p.yaw);
+        p.pitch = input.path("pitch").asDouble(p.pitch);
         double accel = sprint ? 140 : 90;
         p.velocity.x += ax * accel * 0.016;
         p.velocity.z += az * accel * 0.016;

@@ -3,6 +3,32 @@ import * as THREE from 'three'
 const app = document.getElementById('app')
 const overlay = document.getElementById('overlay')
 const hotbar = document.getElementById('hotbar')
+// HUD elements
+const hud = document.createElement('div')
+hud.style.position = 'absolute'
+hud.style.left = '16px'
+hud.style.bottom = '16px'
+hud.style.width = '220px'
+hud.style.height = '14px'
+hud.style.border = '2px solid #fff3'
+hud.style.background = '#0006'
+document.body.appendChild(hud)
+const hpBar = document.createElement('div')
+hpBar.style.height = '100%'
+hpBar.style.width = '100%'
+hpBar.style.background = '#e33'
+hud.appendChild(hpBar)
+const crosshair = document.createElement('div')
+crosshair.style.position = 'absolute'
+crosshair.style.left = '50%'
+crosshair.style.top = '50%'
+crosshair.style.transform = 'translate(-50%,-50%)'
+crosshair.style.width = '10px'
+crosshair.style.height = '10px'
+crosshair.style.border = '2px solid white'
+crosshair.style.borderRadius = '50%'
+crosshair.style.opacity = '0'
+document.body.appendChild(crosshair)
 
 // Three.js setup
 const renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -292,6 +318,12 @@ function handleState(msg) {
       }
     }
   }
+  // update HP bar from local player data if available
+  const me = players.find(p => p.id === myId)
+  if (me) {
+    const pct = Math.max(0, Math.min(1, (me.hp ?? 100) / 100))
+    hpBar.style.width = `${pct * 100}%`
+  }
 }
 
 // Send inputs at 30 Hz
@@ -300,7 +332,7 @@ setInterval(() => {
   if (!pointerLocked) return
   const { ax, az } = computeInputAxes()
   const jump = wantJump; wantJump = false
-  socket.send(JSON.stringify({ type: 'input', input: { ax, az, jump, sprint } }))
+  socket.send(JSON.stringify({ type: 'input', input: { ax, az, jump, sprint, yaw, pitch } }))
 }, 33)
 
 // Build: place/remove blocks with mouse

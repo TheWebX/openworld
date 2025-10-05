@@ -30,6 +30,9 @@ public class GameLoop {
             ps.put("x", p.position.x);
             ps.put("y", p.position.y);
             ps.put("z", p.position.z);
+            ps.put("hp", p.hp);
+            ps.put("yaw", p.yaw);
+            ps.put("pitch", p.pitch);
             players.add(ps);
         }
         // NPCs
