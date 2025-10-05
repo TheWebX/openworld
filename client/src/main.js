@@ -103,6 +103,10 @@ function getBlockMaterial(type) {
   if (type === 3) ctx.fillStyle = '#3faa3f' // leaves
   if (type === 4) ctx.fillStyle = '#996633' // dirt
   if (type === 5) ctx.fillStyle = '#c2b280' // sand
+  if (type === 6) ctx.fillStyle = '#3aa7ff' // water (blue, transparent)
+  if (type === 7) ctx.fillStyle = '#444444' // road
+  if (type === 8) ctx.fillStyle = '#88ccee' // glass
+  if (type === 9) ctx.fillStyle = '#7a5546' // roof
   ctx.fillRect(0, 0, size, size)
   // add subtle noise
   const img = ctx.getImageData(0, 0, size, size)
@@ -117,7 +121,9 @@ function getBlockMaterial(type) {
   const tex = new THREE.CanvasTexture(canvas)
   tex.magFilter = THREE.NearestFilter
   tex.minFilter = THREE.LinearMipmapLinearFilter
-  const mat = new THREE.MeshLambertMaterial({ map: tex })
+  const transparent = (type === 6 || type === 8)
+  const opacity = (type === 6) ? 0.6 : (type === 8 ? 0.35 : 1.0)
+  const mat = new THREE.MeshLambertMaterial({ map: tex, transparent, opacity })
   blockMaterials.set(type, mat)
   return mat
 }

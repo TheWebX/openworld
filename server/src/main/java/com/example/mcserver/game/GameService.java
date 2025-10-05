@@ -26,6 +26,30 @@ public class GameService {
 
     private final Random rng = new Random(1337L);
 
+    // NPCs and projectiles
+    public static class NPC {
+        public String id;
+        public String kind; // "villager" | "police"
+        public Vec3 position = new Vec3(0, 0, 0);
+        public Vec3 velocity = new Vec3(0, 0, 0);
+        public int hp = 100;
+        public String targetPlayerId; // police target
+        public NPC(String id, String kind) { this.id = id; this.kind = kind; }
+    }
+
+    public static class Projectile {
+        public String ownerPlayerId;
+        public Vec3 position;
+        public Vec3 velocity;
+        public double ttlSeconds;
+        public Projectile(String ownerPlayerId, Vec3 position, Vec3 velocity, double ttlSeconds) {
+            this.ownerPlayerId = ownerPlayerId; this.position = position; this.velocity = velocity; this.ttlSeconds = ttlSeconds;
+        }
+    }
+
+    private final Map<String, NPC> npcs = new ConcurrentHashMap<>();
+    private final java.util.List<Projectile> projectiles = new java.util.ArrayList<>();
+
     public GameService() {
         seedDemo();
     }
@@ -80,13 +104,85 @@ public class GameService {
     }
 
     public void tick() {
+        double dt = 0.016;
         for (Player p : players.values()) {
-            applyFlatPhysics(p, 0.016);
+            applyFlatPhysics(p, dt);
         }
+        // simple NPC wander and police chase
+        for (NPC n : npcs.values()) {
+            if ("villager".equals(n.kind)) {
+                if (rng.nextDouble() < 0.02) {
+                    double ang = rng.nextDouble() * Math.PI * 2;
+                    n.velocity.x = Math.cos(ang) * 3;
+                    n.velocity.z = Math.sin(ang) * 3;
+                }
+            } else if ("police".equals(n.kind)) {
+                // pick nearest player
+                Player nearest = null;
+                double best = Double.MAX_VALUE;
+                for (Player p : players.values()) {
+                    double dx = p.position.x - n.position.x;
+                    double dz = p.position.z - n.position.z;
+                    double d2 = dx*dx + dz*dz;
+                    if (d2 < best) { best = d2; nearest = p; }
+                }
+                if (nearest != null) {
+                    double dx = nearest.position.x - n.position.x;
+                    double dz = nearest.position.z - n.position.z;
+                    double len = Math.hypot(dx, dz);
+                    if (len > 0) { dx/=len; dz/=len; }
+                    n.velocity.x = dx * 4;
+                    n.velocity.z = dz * 4;
+                }
+            }
+            // integrate and ground collide
+            n.position.x += n.velocity.x * dt;
+            n.position.z += n.velocity.z * dt;
+            int groundY = Math.max(0, getSurfaceY((int)Math.floor(n.position.x), (int)Math.floor(n.position.z)));
+            n.position.y = groundY;
+        }
+        // projectiles
+        java.util.Iterator<Projectile> it = projectiles.iterator();
+        while (it.hasNext()) {
+            Projectile pr = it.next();
+            pr.ttlSeconds -= dt;
+            if (pr.ttlSeconds <= 0) { it.remove(); continue; }
+            pr.position.x += pr.velocity.x * dt;
+            pr.position.y += pr.velocity.y * dt;
+            pr.position.z += pr.velocity.z * dt;
+            // hit NPCs
+            for (NPC n : npcs.values()) {
+                if (distance2(pr.position, n.position) < 0.6*0.6) {
+                    n.hp -= 25;
+                    it.remove();
+                    break;
+                }
+            }
+        }
+    }
+
+    private static double distance2(Vec3 a, Vec3 b) {
+        double dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+        return dx*dx + dy*dy + dz*dz;
+    }
+
+    public void handleShoot(String playerId, double dx, double dy, double dz) {
+        Player p = players.get(playerId);
+        if (p == null) return;
+        double len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        if (len == 0) return;
+        dx/=len; dy/=len; dz/=len;
+        Vec3 start = new Vec3(p.position.x, p.position.y + 1.4, p.position.z);
+        Vec3 vel = new Vec3(dx * 40, dy * 40, dz * 40);
+        projectiles.add(new Projectile(playerId, start, vel, 2.0));
     }
 
     public Map<String, Player> getPlayers() {
         return players;
+    }
+
+    public Map<String, NPC> getNpcs() {
+        return npcs;
     }
 
     public Map<String, Integer> getBlocks() {
@@ -156,6 +252,20 @@ public class GameService {
                 if (t != null && t == TYPE_WATER) continue;
             }
             buildTree(x, z);
+        }
+
+        // Spawn some NPCs
+        for (int i = 0; i < 10; i++) {
+            String id = "npc_v_" + i;
+            NPC n = new NPC(id, "villager");
+            n.position = new Vec3(rng.nextInt(max - min + 1) + min + 0.5, getSurfaceY(0, 0), rng.nextInt(max - min + 1) + min + 0.5);
+            npcs.put(id, n);
+        }
+        for (int i = 0; i < 5; i++) {
+            String id = "npc_p_" + i;
+            NPC n = new NPC(id, "police");
+            n.position = new Vec3(rng.nextInt(max - min + 1) + min + 0.5, getSurfaceY(0, 0), rng.nextInt(max - min + 1) + min + 0.5);
+            npcs.put(id, n);
         }
     }
 

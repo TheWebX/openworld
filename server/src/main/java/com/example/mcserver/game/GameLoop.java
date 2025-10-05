@@ -32,9 +32,21 @@ public class GameLoop {
             ps.put("z", p.position.z);
             players.add(ps);
         }
+        // NPCs
+        List<Map<String, Object>> npcs = new ArrayList<>();
+        for (GameService.NPC n : gameService.getNpcs().values()) {
+            Map<String, Object> ns = new HashMap<>();
+            ns.put("id", n.id);
+            ns.put("kind", n.kind);
+            ns.put("x", n.position.x);
+            ns.put("y", n.position.y);
+            ns.put("z", n.position.z);
+            npcs.add(ns);
+        }
         Map<String, Object> payload = new HashMap<>();
         payload.put("type", "state");
         payload.put("players", players);
+        payload.put("npcs", npcs);
         ws.broadcast(payload);
     }
 }
