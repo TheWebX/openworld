@@ -67,6 +67,7 @@ scene.add(ground)
 const playerMeshes = new Map()
 let myId = null
 const blockMeshes = new Map() // key: "x,y,z" -> mesh
+const blockMaterials = new Map() // type -> material
 const raycaster = new THREE.Raycaster()
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 
@@ -86,9 +87,42 @@ function getOrCreatePlayerMesh(id) {
   return mesh
 }
 
+function getBlockMaterial(type) {
+  if (blockMaterials.has(type)) return blockMaterials.get(type)
+  const size = 32
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#888'
+  // type palette
+  if (type === 1) ctx.fillStyle = '#777777' // stone
+  if (type === 2) ctx.fillStyle = '#8b5a2b' // wood trunk
+  if (type === 3) ctx.fillStyle = '#3faa3f' // leaves
+  if (type === 4) ctx.fillStyle = '#996633' // dirt
+  if (type === 5) ctx.fillStyle = '#c2b280' // sand
+  ctx.fillRect(0, 0, size, size)
+  // add subtle noise
+  const img = ctx.getImageData(0, 0, size, size)
+  const data = img.data
+  for (let i = 0; i < data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 20
+    data[i] = Math.max(0, Math.min(255, data[i] + n))
+    data[i+1] = Math.max(0, Math.min(255, data[i+1] + n))
+    data[i+2] = Math.max(0, Math.min(255, data[i+2] + n))
+  }
+  ctx.putImageData(img, 0, 0)
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.magFilter = THREE.NearestFilter
+  tex.minFilter = THREE.LinearMipmapLinearFilter
+  const mat = new THREE.MeshLambertMaterial({ map: tex })
+  blockMaterials.set(type, mat)
+  return mat
+}
+
 function createBlockMesh(x, y, z, type = 1) {
   const geom = new THREE.BoxGeometry(1, 1, 1)
-  const mat = new THREE.MeshLambertMaterial({ color: 0x8fbf6d })
+  const mat = getBlockMaterial(type)
   const mesh = new THREE.Mesh(geom, mat)
   mesh.position.set(x + 0.5, y + 0.5, z + 0.5)
   mesh.userData.cell = { x, y, z, type }

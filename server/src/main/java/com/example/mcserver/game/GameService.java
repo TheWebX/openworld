@@ -2,6 +2,7 @@ package com.example.mcserver.game;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
+import jakarta.annotation.PostConstruct;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -83,6 +84,33 @@ public class GameService {
 
     private static String key(int x, int y, int z) {
         return x + "," + y + "," + z;
+    }
+
+    @PostConstruct
+    public void seedDemo() {
+        // Stone pad near origin (type 1)
+        for (int x = -4; x <= 4; x++) {
+            for (int z = -4; z <= 4; z++) {
+                setBlock(x, 0, z, 1);
+            }
+        }
+        // Tree trunk (type 2) and leaves canopy (type 3)
+        int tx = 6, tz = 6;
+        for (int y = 0; y <= 3; y++) setBlock(tx, y, tz, 2);
+        for (int y = 3; y <= 5; y++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    if (Math.abs(dx) + Math.abs(dz) <= 3) setBlock(tx + dx, y, tz + dz, 3);
+                }
+            }
+        }
+        // Dirt pile (type 4)
+        for (int x = -8; x <= -5; x++) {
+            for (int z = -8; z <= -5; z++) {
+                setBlock(x, 0, z, 4);
+                if ((x + z) % 2 == 0) setBlock(x, 1, z, 4);
+            }
+        }
     }
 
     private void applyFlatPhysics(Player p, double dt) {
