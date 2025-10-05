@@ -41,6 +41,22 @@ scene.background = new THREE.Color('#87ceeb')
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000)
 scene.add(camera)
+// First-person hands + gun group (attached to camera)
+const fpGroup = new THREE.Group()
+fpGroup.position.set(0.35, -0.35, -0.8)
+const fpArmGeom = new THREE.BoxGeometry(0.12, 0.4, 0.12)
+const fpArmMat = new THREE.MeshLambertMaterial({ color: 0xffd7b3 })
+const fpRightArm = new THREE.Mesh(fpArmGeom, fpArmMat)
+fpRightArm.position.set(0, -0.2, 0)
+const fpGunGeom = new THREE.BoxGeometry(0.25, 0.12, 0.5)
+const fpGunMat = new THREE.MeshLambertMaterial({ color: 0x333333 })
+const fpGun = new THREE.Mesh(fpGunGeom, fpGunMat)
+fpGun.position.set(0.05, -0.05, -0.2)
+fpGroup.add(fpRightArm)
+fpGroup.add(fpGun)
+camera.add(fpGroup)
+fpGroup.visible = false
+let fpRecoil = 0
 
 const ambient = new THREE.AmbientLight(0xffffff, 0.6)
 scene.add(ambient)
@@ -90,8 +106,8 @@ const ground = new THREE.Mesh(groundGeom, groundMat)
 ground.receiveShadow = false
 scene.add(ground)
 
-// Player visuals and blocks
-const playerMeshes = new Map()
+// Player rigs and blocks
+const playerRigs = new Map()
 let myId = null
 const blockMeshes = new Map() // key: "x,y,z" -> mesh
 const blockMaterials = new Map() // type -> material
@@ -99,22 +115,76 @@ let selectedType = 1
 let selectedKind = 'block'
 const raycaster = new THREE.Raycaster()
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
-const npcMeshes = new Map() // id -> mesh
+const npcRigs = new Map() // id -> rig
 
 function blockKey(x, y, z) { return `${x},${y},${z}` }
 
-function getOrCreatePlayerMesh(id) {
-  let mesh = playerMeshes.get(id)
-  if (!mesh) {
-    const geom = new THREE.BoxGeometry(0.6, 1.8, 0.6)
-    const mat = new THREE.MeshLambertMaterial({ color: id === myId ? 0x33aaff : 0xffcc66 })
-    mesh = new THREE.Mesh(geom, mat)
-    mesh.castShadow = false
-    mesh.receiveShadow = false
-    scene.add(mesh)
-    playerMeshes.set(id, mesh)
+function createHumanRig(palette) {
+  const group = new THREE.Group()
+  const legsH = 0.8, bodyH = 0.8, headH = 0.2
+  const legW = 0.22, legD = 0.22
+  const bodyW = 0.5, bodyD = 0.28
+  const armW = 0.18, armD = 0.18, armH = 0.8
+  const skinMat = new THREE.MeshLambertMaterial({ color: palette.skin })
+  const shirtMat = new THREE.MeshLambertMaterial({ color: palette.shirt })
+  const pantsMat = new THREE.MeshLambertMaterial({ color: palette.pants })
+  const legGeom = new THREE.BoxGeometry(legW, legsH, legD)
+  const leftLeg = new THREE.Mesh(legGeom, pantsMat)
+  const rightLeg = new THREE.Mesh(legGeom, pantsMat)
+  const legOffsetX = (legW / 2) + 0.05
+  leftLeg.position.set(-legOffsetX, legsH / 2, 0)
+  rightLeg.position.set(legOffsetX, legsH / 2, 0)
+  const bodyGeom = new THREE.BoxGeometry(bodyW, bodyH, bodyD)
+  const body = new THREE.Mesh(bodyGeom, shirtMat)
+  body.position.set(0, legsH + bodyH / 2, 0)
+  const armGeom = new THREE.BoxGeometry(armW, armH, armD)
+  const leftArm = new THREE.Mesh(armGeom, skinMat)
+  const rightArm = new THREE.Mesh(armGeom, skinMat)
+  const armOffsetX = (bodyW / 2) + (armW / 2)
+  const armY = legsH + armH / 2
+  leftArm.position.set(-armOffsetX, armY, 0)
+  rightArm.position.set(armOffsetX, armY, 0)
+  const headGeom = new THREE.BoxGeometry(0.5, headH, 0.5)
+  const head = new THREE.Mesh(headGeom, skinMat)
+  head.position.set(0, legsH + bodyH + headH / 2, 0)
+  group.add(leftLeg, rightLeg, body, leftArm, rightArm, head)
+  const rig = { group, parts: { leftLeg, rightLeg, leftArm, rightArm, head, body }, lastPos: new THREE.Vector3(), walkPhase: 0,
+    update(pos, yaw, pitch, dt) {
+      const dx = pos.x - this.lastPos.x, dz = pos.z - this.lastPos.z
+      const speed = Math.min(1.0, Math.hypot(dx, dz) / Math.max(0.0001, dt))
+      this.walkPhase += speed * dt * 6.0
+      const swing = Math.sin(this.walkPhase) * 0.6 * speed
+      this.parts.leftLeg.rotation.x = swing
+      this.parts.rightLeg.rotation.x = -swing
+      this.parts.leftArm.rotation.x = -swing * 0.8
+      this.parts.rightArm.rotation.x = swing * 0.8
+      this.group.rotation.y = yaw
+      this.parts.head.rotation.x = pitch * 0.5
+      this.lastPos.copy(pos)
+    } }
+  return rig
+}
+
+function getOrCreatePlayerRig(id) {
+  let rig = playerRigs.get(id)
+  if (!rig) {
+    const palette = { skin: 0xffd7b3, shirt: (id===myId)?0x3da5ff:0x5ca56a, pants: 0x2a4b8d }
+    rig = createHumanRig(palette)
+    scene.add(rig.group)
+    playerRigs.set(id, rig)
   }
-  return mesh
+  return rig
+}
+
+function getOrCreateNPCRig(id, kind) {
+  let rig = npcRigs.get(id)
+  if (!rig) {
+    const palette = kind==='police' ? { skin:0xffd7b3, shirt:0x2244ff, pants:0x111133 } : { skin:0xffd7b3, shirt:0x88aa55, pants:0x554433 }
+    rig = createHumanRig(palette)
+    scene.add(rig.group)
+    npcRigs.set(id, rig)
+  }
+  return rig
 }
 
 function getBlockMaterial(type) {
