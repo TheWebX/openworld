@@ -57,13 +57,13 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 int x = root.path("x").asInt();
                 int y = root.path("y").asInt();
                 int z = root.path("z").asInt();
-                int type = root.path("type").asInt(1);
-                if (gameService.setBlock(x, y, z, type)) {
+                int blockType = root.path("type").asInt(1);
+                if (gameService.setBlock(x, y, z, blockType)) {
                     broadcast(objectMapper.createObjectNode()
                             .put("type", "blockUpdate")
                             .put("action", "set")
                             .put("x", x).put("y", y).put("z", z)
-                            .put("block", type));
+                            .put("block", blockType));
                 }
                 break;
             case "removeBlock":

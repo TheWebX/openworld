@@ -241,6 +241,8 @@ window.addEventListener('mousedown', (e) => {
   if (!pointerLocked) return
   // ray from center
   raycaster.setFromCamera({ x: 0, y: 0 }, camera)
+  // Ensure latest camera rotation is used
+  camera.rotation.set(pitch, yaw, 0, 'YXZ')
   const blockList = Array.from(blockMeshes.values())
   const hits = raycaster.intersectObjects(blockList, false)
   if (e.button === 2) { // right: remove block if hit
@@ -256,7 +258,7 @@ window.addEventListener('mousedown', (e) => {
       const hit = hits[0]
       const cell = hit.object.userData.cell
       // place adjacent along face normal
-      const n = hit.face?.normal.clone() || new THREE.Vector3(0, 1, 0)
+      const n = (hit.face && hit.face.normal ? hit.face.normal.clone() : new THREE.Vector3(0, 1, 0))
       const nx = Math.round(n.x), ny = Math.round(n.y), nz = Math.round(n.z)
       const x = cell.x + nx
       const y = cell.y + ny
