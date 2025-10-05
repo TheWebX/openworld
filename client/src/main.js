@@ -2,6 +2,7 @@ import * as THREE from 'three'
 
 const app = document.getElementById('app')
 const overlay = document.getElementById('overlay')
+const hotbar = document.getElementById('hotbar')
 
 // Three.js setup
 const renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -68,6 +69,7 @@ const playerMeshes = new Map()
 let myId = null
 const blockMeshes = new Map() // key: "x,y,z" -> mesh
 const blockMaterials = new Map() // type -> material
+let selectedType = 1
 const raycaster = new THREE.Raycaster()
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 
@@ -165,6 +167,10 @@ document.addEventListener('keydown', (e) => {
   pressed.add(e.code)
   if (e.code === 'Space') wantJump = true
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') sprint = true
+  if (e.code.startsWith('Digit')) {
+    const num = parseInt(e.code.slice(5), 10)
+    if (num >= 1 && num <= 5) setSelectedType(num)
+  }
 })
 
 document.addEventListener('keyup', (e) => {
@@ -179,6 +185,7 @@ document.addEventListener('click', () => {
 document.addEventListener('pointerlockchange', () => {
   pointerLocked = document.pointerLockElement === renderer.domElement
   overlay.classList.toggle('hidden', pointerLocked)
+  if (hotbar) hotbar.style.opacity = pointerLocked ? '1' : '0.5'
 })
 
 document.addEventListener('mousemove', (e) => {
@@ -297,7 +304,7 @@ window.addEventListener('mousedown', (e) => {
       const z = cell.z + nz
       const key = blockKey(x, y, z)
       if (!blockMeshes.has(key)) {
-        socket?.send(JSON.stringify({ type: 'placeBlock', x, y, z, type: 1 }))
+        socket?.send(JSON.stringify({ type: 'placeBlock', x, y, z, type: selectedType }))
       }
     } else {
       // place on ground where ray hits y=0
@@ -307,12 +314,37 @@ window.addEventListener('mousedown', (e) => {
         const y = 0
         const key = blockKey(x, y, z)
         if (!blockMeshes.has(key)) {
-          socket?.send(JSON.stringify({ type: 'placeBlock', x, y, z, type: 1 }))
+          socket?.send(JSON.stringify({ type: 'placeBlock', x, y, z, type: selectedType }))
         }
       }
     }
   }
 })
+
+function setSelectedType(type) {
+  selectedType = type
+  document.querySelectorAll('#hotbar .slot').forEach(el => {
+    const t = parseInt(el.getAttribute('data-type'), 10)
+    el.style.borderColor = t === selectedType ? '#fff' : '#fff3'
+    el.style.background = t === selectedType ? '#444a' : '#222a'
+  })
+}
+
+document.querySelectorAll('#hotbar .slot').forEach(el => {
+  el.addEventListener('click', (e) => {
+    e.stopPropagation()
+    const t = parseInt(el.getAttribute('data-type'), 10)
+    setSelectedType(t)
+  })
+})
+
+window.addEventListener('wheel', (e) => {
+  if (!pointerLocked) return
+  if (e.deltaY > 0) setSelectedType(((selectedType - 1 + 1) % 5) + 1)
+  else if (e.deltaY < 0) setSelectedType(((selectedType - 1 - 1 + 5) % 5) + 1)
+})
+
+setSelectedType(1)
 
 // Render loop
 function animate() {
