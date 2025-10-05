@@ -176,6 +176,11 @@ function getOrCreatePlayerRig(id) {
   return rig
 }
 
+// Back-compat alias: if older code references getOrCreatePlayerMesh, return the rig group
+function getOrCreatePlayerMesh(id) {
+  return getOrCreatePlayerRig(id).group
+}
+
 function getOrCreateNPCRig(id, kind) {
   let rig = npcRigs.get(id)
   if (!rig) {
@@ -356,8 +361,17 @@ function handleState(msg) {
   if (!myId) return
   const players = msg.players
   for (const p of players) {
-    const mesh = getOrCreatePlayerMesh(p.id)
-    mesh.position.set(p.x, p.y, p.z)
+    const rig = getOrCreatePlayerRig(p.id)
+    rig.group.position.set(p.x, p.y, p.z)
+    const now = performance.now()
+    rig._lastTime = rig._lastTime ?? now
+    const dt = Math.min(0.05, (now - rig._lastTime) / 1000)
+    rig._lastTime = now
+    const yawVal = (p.yaw ?? 0)
+    const pitchVal = (p.pitch ?? 0)
+    rig.update(new THREE.Vector3(p.x, p.y, p.z), yawVal, pitchVal, dt)
+    // hide local body to avoid first-person obstruction
+    rig.group.visible = p.id !== myId
     if (p.id === myId) {
       const eyeHeight = 1.6
       camera.position.set(p.x, Math.max(p.y + eyeHeight, 0.2), p.z)
@@ -368,23 +382,20 @@ function handleState(msg) {
   if (Array.isArray(msg.npcs)) {
     const seen = new Set()
     for (const n of msg.npcs) {
-      let mesh = npcMeshes.get(n.id)
-      if (!mesh) {
-        const color = n.kind === 'police' ? 0x2244ff : 0xcccc77
-        const geom = new THREE.BoxGeometry(0.6, 1.8, 0.6)
-        const mat = new THREE.MeshLambertMaterial({ color })
-        mesh = new THREE.Mesh(geom, mat)
-        scene.add(mesh)
-        npcMeshes.set(n.id, mesh)
-      }
-      mesh.position.set(n.x, n.y, n.z)
+      const rig = getOrCreateNPCRig(n.id, n.kind)
+      rig.group.position.set(n.x, n.y, n.z)
+      const now2 = performance.now()
+      rig._lastTime = rig._lastTime ?? now2
+      const dt2 = Math.min(0.05, (now2 - rig._lastTime) / 1000)
+      rig._lastTime = now2
+      rig.update(new THREE.Vector3(n.x, n.y, n.z), rig.group.rotation.y, 0, dt2)
       seen.add(n.id)
     }
     // remove stale
-    for (const [id, mesh] of npcMeshes) {
+    for (const [id, rig] of npcRigs) {
       if (!seen.has(id)) {
-        scene.remove(mesh)
-        npcMeshes.delete(id)
+        scene.remove(rig.group)
+        npcRigs.delete(id)
       }
     }
   }
