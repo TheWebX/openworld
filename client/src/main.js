@@ -304,7 +304,7 @@ window.addEventListener('mousedown', (e) => {
       const z = cell.z + nz
       const key = blockKey(x, y, z)
       if (!blockMeshes.has(key)) {
-        socket?.send(JSON.stringify({ type: 'placeBlock', x, y, z, type: selectedType }))
+        socket?.send(JSON.stringify({ type: 'placeBlock', x, y, z, block: selectedType }))
       }
     } else {
       // place on ground where ray hits y=0
@@ -314,7 +314,7 @@ window.addEventListener('mousedown', (e) => {
         const y = 0
         const key = blockKey(x, y, z)
         if (!blockMeshes.has(key)) {
-          socket?.send(JSON.stringify({ type: 'placeBlock', x, y, z, type: selectedType }))
+          socket?.send(JSON.stringify({ type: 'placeBlock', x, y, z, block: selectedType }))
         }
       }
     }

@@ -57,7 +57,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                 int x = root.path("x").asInt();
                 int y = root.path("y").asInt();
                 int z = root.path("z").asInt();
-                int blockType = root.path("type").asInt(1);
+                int blockType = root.has("block") ? root.path("block").asInt(1) : root.path("type").asInt(1);
                 if (gameService.setBlock(x, y, z, blockType)) {
                     broadcast(objectMapper.createObjectNode()
                             .put("type", "blockUpdate")
