@@ -159,7 +159,10 @@ public class GameService {
             int x = rng.nextInt(max - min + 1) + min;
             int z = rng.nextInt(max - min + 1) + min;
             if (x % 16 == 0 || z % 16 == 0) continue; // not on roads
-            if (getType(x, 1, z) == TYPE_WATER) continue;
+            {
+                Integer t = getType(x, 1, z);
+                if (t != null && t == TYPE_WATER) continue;
+            }
             buildTree(x, z);
         }
     }
@@ -168,7 +171,8 @@ public class GameService {
         // ensure area is not water
         for (int x = baseX; x < baseX + w; x++) {
             for (int z = baseZ; z < baseZ + d; z++) {
-                if (getType(x, 1, z) == TYPE_WATER) return;
+                Integer t = getType(x, 1, z);
+                if (t != null && t == TYPE_WATER) return;
             }
         }
         // floor
