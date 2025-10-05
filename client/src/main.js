@@ -25,9 +25,15 @@ scene.add(sun)
 const grid = new THREE.GridHelper(400, 200, 0x444444, 0x888888)
 scene.add(grid)
 
-// Player visuals
+// Player visuals and blocks
 const playerMeshes = new Map()
 let myId = null
+const blockMeshes = new Map() // key: "x,y,z" -> mesh
+const raycaster = new THREE.Raycaster()
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+
+function blockKey(x, y, z) { return `${x},${y},${z}` }
+
 function getOrCreatePlayerMesh(id) {
   let mesh = playerMeshes.get(id)
   if (!mesh) {
@@ -40,6 +46,34 @@ function getOrCreatePlayerMesh(id) {
     playerMeshes.set(id, mesh)
   }
   return mesh
+}
+
+function createBlockMesh(x, y, z, type = 1) {
+  const geom = new THREE.BoxGeometry(1, 1, 1)
+  const mat = new THREE.MeshLambertMaterial({ color: 0x8fbf6d })
+  const mesh = new THREE.Mesh(geom, mat)
+  mesh.position.set(x + 0.5, y + 0.5, z + 0.5)
+  mesh.userData.cell = { x, y, z, type }
+  scene.add(mesh)
+  return mesh
+}
+
+function addBlock(x, y, z, type = 1) {
+  const key = blockKey(x, y, z)
+  if (blockMeshes.has(key)) return
+  const mesh = createBlockMesh(x, y, z, type)
+  blockMeshes.set(key, mesh)
+}
+
+function removeBlock(x, y, z) {
+  const key = blockKey(x, y, z)
+  const mesh = blockMeshes.get(key)
+  if (!mesh) return
+  scene.remove(mesh)
+  mesh.geometry.dispose()
+  if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose())
+  else mesh.material.dispose()
+  blockMeshes.delete(key)
 }
 
 // Input handling (pointer lock + WASD)
@@ -109,8 +143,14 @@ function connect() {
     const msg = JSON.parse(ev.data)
     if (msg.type === 'hello') {
       myId = msg.id
+      if (Array.isArray(msg.blocks)) {
+        for (const b of msg.blocks) addBlock(b.x, b.y, b.z, b.type)
+      }
     } else if (msg.type === 'state') {
       handleState(msg)
+    } else if (msg.type === 'blockUpdate') {
+      if (msg.action === 'set') addBlock(msg.x, msg.y, msg.z, msg.block)
+      else if (msg.action === 'remove') removeBlock(msg.x, msg.y, msg.z)
     }
   })
   socket.addEventListener('close', () => {
@@ -140,6 +180,52 @@ setInterval(() => {
   const jump = wantJump; wantJump = false
   socket.send(JSON.stringify({ type: 'input', input: { ax, az, jump, sprint } }))
 }, 33)
+
+// Build: place/remove blocks with mouse
+window.addEventListener('contextmenu', (e) => e.preventDefault())
+window.addEventListener('mousedown', (e) => {
+  if (!pointerLocked) return
+  // ray from center
+  raycaster.setFromCamera({ x: 0, y: 0 }, camera)
+  const blockList = Array.from(blockMeshes.values())
+  const hits = raycaster.intersectObjects(blockList, false)
+  if (e.button === 2) { // right: remove block if hit
+    if (hits.length) {
+      const hit = hits[0]
+      const cell = hit.object.userData.cell
+      socket?.send(JSON.stringify({ type: 'removeBlock', x: cell.x, y: cell.y, z: cell.z }))
+    }
+    return
+  }
+  if (e.button === 0) { // left: place block
+    if (hits.length) {
+      const hit = hits[0]
+      const cell = hit.object.userData.cell
+      // place adjacent along face normal
+      const n = hit.face?.normal.clone() || new THREE.Vector3(0, 1, 0)
+      const nx = Math.round(n.x), ny = Math.round(n.y), nz = Math.round(n.z)
+      const x = cell.x + nx
+      const y = cell.y + ny
+      const z = cell.z + nz
+      const key = blockKey(x, y, z)
+      if (!blockMeshes.has(key)) {
+        socket?.send(JSON.stringify({ type: 'placeBlock', x, y, z, type: 1 }))
+      }
+    } else {
+      // place on ground where ray hits y=0
+      const p = new THREE.Vector3()
+      if (raycaster.ray.intersectPlane(groundPlane, p)) {
+        const x = Math.floor(p.x)
+        const z = Math.floor(p.z)
+        const y = 0
+        const key = blockKey(x, y, z)
+        if (!blockMeshes.has(key)) {
+          socket?.send(JSON.stringify({ type: 'placeBlock', x, y, z, type: 1 }))
+        }
+      }
+    }
+  }
+})
 
 // Render loop
 function animate() {

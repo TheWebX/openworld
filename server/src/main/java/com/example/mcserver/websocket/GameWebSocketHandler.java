@@ -28,9 +28,21 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         sessions.put(session.getId(), session);
         gameService.onPlayerConnect(session.getId());
         // Send hello with only player id
-        send(session, objectMapper.createObjectNode()
+        var hello = objectMapper.createObjectNode()
                 .put("type", "hello")
-                .put("id", session.getId()));
+                .put("id", session.getId());
+        var blocksNode = objectMapper.createArrayNode();
+        for (var entry : gameService.getBlocks().entrySet()) {
+            String[] parts = entry.getKey().split(",");
+            int x = Integer.parseInt(parts[0]);
+            int y = Integer.parseInt(parts[1]);
+            int z = Integer.parseInt(parts[2]);
+            int t = entry.getValue();
+            blocksNode.add(objectMapper.createObjectNode()
+                    .put("x", x).put("y", y).put("z", z).put("type", t));
+        }
+        hello.set("blocks", blocksNode);
+        send(session, hello);
     }
 
     @Override
@@ -40,6 +52,30 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         switch (type) {
             case "input":
                 gameService.handlePlayerInput(session.getId(), root.path("input"));
+                break;
+            case "placeBlock":
+                int x = root.path("x").asInt();
+                int y = root.path("y").asInt();
+                int z = root.path("z").asInt();
+                int type = root.path("type").asInt(1);
+                if (gameService.setBlock(x, y, z, type)) {
+                    broadcast(objectMapper.createObjectNode()
+                            .put("type", "blockUpdate")
+                            .put("action", "set")
+                            .put("x", x).put("y", y).put("z", z)
+                            .put("block", type));
+                }
+                break;
+            case "removeBlock":
+                int rx = root.path("x").asInt();
+                int ry = root.path("y").asInt();
+                int rz = root.path("z").asInt();
+                if (gameService.removeBlock(rx, ry, rz)) {
+                    broadcast(objectMapper.createObjectNode()
+                            .put("type", "blockUpdate")
+                            .put("action", "remove")
+                            .put("x", rx).put("y", ry).put("z", rz));
+                }
                 break;
             // no world/chunk messages in flat world mode
             default:

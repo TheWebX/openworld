@@ -5,10 +5,12 @@ import org.springframework.stereotype.Service;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class GameService {
     private final Map<String, Player> players = new ConcurrentHashMap<>();
+    private final Map<String, Integer> blocks = new ConcurrentHashMap<>(); // key: "x,y,z" -> type id
 
     public static class Vec3 {
         public double x, y, z;
@@ -39,9 +41,17 @@ public class GameService {
         double az = input.path("az").asDouble(0);
         boolean jump = input.path("jump").asBoolean(false);
         boolean sprint = input.path("sprint").asBoolean(false);
-        double accel = sprint ? 40 : 25;
+        double accel = sprint ? 140 : 90;
         p.velocity.x += ax * accel * 0.016;
         p.velocity.z += az * accel * 0.016;
+        // clamp planar speed
+        double maxSpeed = sprint ? 12.0 : 7.0;
+        double planar = Math.hypot(p.velocity.x, p.velocity.z);
+        if (planar > maxSpeed) {
+            double scale = maxSpeed / planar;
+            p.velocity.x *= scale;
+            p.velocity.z *= scale;
+        }
         if (jump && p.onGround) { p.velocity.y = 8.5; p.onGround = false; }
     }
 
@@ -55,11 +65,31 @@ public class GameService {
         return players;
     }
 
+    public Map<String, Integer> getBlocks() {
+        return blocks;
+    }
+
+    public boolean setBlock(int x, int y, int z, int type) {
+        if (y < 0) return false;
+        String k = key(x, y, z);
+        Integer prev = blocks.put(k, type);
+        return prev == null || prev != type;
+    }
+
+    public boolean removeBlock(int x, int y, int z) {
+        String k = key(x, y, z);
+        return blocks.remove(k) != null;
+    }
+
+    private static String key(int x, int y, int z) {
+        return x + "," + y + "," + z;
+    }
+
     private void applyFlatPhysics(Player p, double dt) {
         // gravity and damping
         p.velocity.y -= 25 * dt;
-        p.velocity.x *= Math.pow(0.8, dt * 60);
-        p.velocity.z *= Math.pow(0.8, dt * 60);
+        p.velocity.x *= Math.pow(0.92, dt * 60);
+        p.velocity.z *= Math.pow(0.92, dt * 60);
 
         // integrate
         p.position.x += p.velocity.x * dt;
