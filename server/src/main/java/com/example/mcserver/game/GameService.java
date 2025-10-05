@@ -540,8 +540,8 @@ public class GameService {
                     // ensure headroom and not water at y
                     Integer tHere = getType(x, y, z);
                     if (tHere != null && tHere == TYPE_WATER) continue;
-                    // lift slightly above surface to avoid numeric contact
-                    Vec3 candidate = new Vec3(x + 0.5, Math.max(1.0, y + 0.01), z + 0.5);
+                    // spawn 2m above surface
+                    Vec3 candidate = new Vec3(x + 0.5, y + 2.0, z + 0.5);
                     if (!collides(candidate.x, candidate.y, candidate.z)) {
                         return candidate;
                     }
