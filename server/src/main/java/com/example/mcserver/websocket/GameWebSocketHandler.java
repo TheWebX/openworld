@@ -27,6 +27,14 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         sessions.put(session.getId(), session);
         gameService.onPlayerConnect(session.getId());
+        // Send hello with world meta
+        var meta = gameService.getWorldMeta();
+        send(session, objectMapper.createObjectNode()
+                .put("type", "hello")
+                .put("id", session.getId())
+                .put("chunkSize", meta.chunkSize())
+                .put("yMin", meta.yMin())
+                .put("yMax", meta.yMax()));
     }
 
     @Override
@@ -45,7 +53,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
                         .put("type", "chunk")
                         .put("cx", cx)
                         .put("cz", cz)
-                        .put("format", "rle")
+                        .put("format", "dense")
                         .put("size", chunk.blocks().length)
                         .put("yMin", chunk.yMin())
                         .put("yMax", chunk.yMax())

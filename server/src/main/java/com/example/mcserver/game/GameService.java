@@ -1,7 +1,6 @@
 package com.example.mcserver.game;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
@@ -14,6 +13,7 @@ public class GameService {
     private final World world = new World(12345L);
 
     public record ChunkRLE(int[] blocks, int yMin, int yMax) {}
+    public record WorldMeta(int chunkSize, int yMin, int yMax) {}
 
     public static class Vec3 {
         public double x, y, z;
@@ -58,7 +58,6 @@ public class GameService {
         if (jump && p.onGround) { p.velocity.y = 9; p.onGround = false; }
     }
 
-    @Scheduled(fixedRate = 16)
     public void tick() {
         for (Player p : players.values()) {
             applyPhysics(p, 0.016);
@@ -68,6 +67,14 @@ public class GameService {
 
     public ChunkRLE getChunk(int cx, int cz) {
         return world.generateChunkRLE(cx, cz);
+    }
+
+    public WorldMeta getWorldMeta() {
+        return new WorldMeta(world.getChunkSize(), world.getWorldMinY(), world.getWorldMaxY());
+    }
+
+    public Map<String, Player> getPlayers() {
+        return players;
     }
 
     private void applyPhysics(Player p, double dt) {
