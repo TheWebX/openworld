@@ -18,6 +18,8 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final GameService gameService;
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
+    // Ensure serialized sends per-session to avoid TEXT_PARTIAL_WRITING
+    private final Map<String, Object> sessionLocks = new ConcurrentHashMap<>();
 
     public GameWebSocketHandler(GameService gameService) {
         this.gameService = gameService;
@@ -26,6 +28,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         sessions.put(session.getId(), session);
+        sessionLocks.put(session.getId(), new Object());
         gameService.onPlayerConnect(session.getId());
         // Send hello with only player id
         var hello = objectMapper.createObjectNode()
@@ -94,6 +97,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         sessions.remove(session.getId());
+        sessionLocks.remove(session.getId());
         gameService.onPlayerDisconnect(session.getId());
     }
 
@@ -106,14 +110,21 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         }
         for (WebSocketSession s : sessions.values()) {
             if (s.isOpen()) {
-                try {
-                    s.sendMessage(new TextMessage(json));
-                } catch (IOException ignored) {}
+                Object lock = sessionLocks.getOrDefault(s.getId(), this);
+                synchronized (lock) {
+                    try {
+                        s.sendMessage(new TextMessage(json));
+                    } catch (IOException ignored) {}
+                }
             }
         }
     }
 
     private void send(WebSocketSession s, JsonNode node) throws IOException {
-        s.sendMessage(new TextMessage(objectMapper.writeValueAsString(node)));
+        Object lock = sessionLocks.getOrDefault(s.getId(), this);
+        String text = objectMapper.writeValueAsString(node);
+        synchronized (lock) {
+            s.sendMessage(new TextMessage(text));
+        }
     }
 }
