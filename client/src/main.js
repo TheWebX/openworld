@@ -1,5 +1,4 @@
 import * as THREE from 'three'
-import { buildChunkGeometry } from './chunkMesher.js'
 
 const app = document.getElementById('app')
 const overlay = document.getElementById('overlay')
@@ -16,20 +15,19 @@ scene.background = new THREE.Color('#87ceeb')
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000)
 scene.add(camera)
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.5)
+const ambient = new THREE.AmbientLight(0xffffff, 0.6)
 scene.add(ambient)
 const sun = new THREE.DirectionalLight(0xffffff, 0.7)
 sun.position.set(0.5, 1, 0.3)
 scene.add(sun)
 
-// World/chunk state
-let worldMeta = null // { chunkSize, yMin, yMax }
-const loadedChunks = new Map() // key: "cx,cz" -> THREE.Mesh
-const requestedChunks = new Set()
-let myId = null
+// Ground grid
+const grid = new THREE.GridHelper(400, 200, 0x444444, 0x888888)
+scene.add(grid)
 
 // Player visuals
 const playerMeshes = new Map()
+let myId = null
 function getOrCreatePlayerMesh(id) {
   let mesh = playerMeshes.get(id)
   if (!mesh) {
@@ -44,7 +42,7 @@ function getOrCreatePlayerMesh(id) {
   return mesh
 }
 
-// Input handling
+// Input handling (pointer lock + WASD)
 let pointerLocked = false
 let yaw = 0, pitch = 0
 const pressed = new Set()
@@ -111,11 +109,6 @@ function connect() {
     const msg = JSON.parse(ev.data)
     if (msg.type === 'hello') {
       myId = msg.id
-      worldMeta = { chunkSize: msg.chunkSize, yMin: msg.yMin, yMax: msg.yMax }
-      // request initial chunks around origin
-      ensureChunksAround({ x: 0, z: 0 }, 3)
-    } else if (msg.type === 'chunk') {
-      handleChunk(msg)
     } else if (msg.type === 'state') {
       handleState(msg)
     }
@@ -126,20 +119,6 @@ function connect() {
 }
 connect()
 
-function handleChunk(msg) {
-  const { cx, cz, data, yMin, yMax } = msg
-  const key = `${cx},${cz}`
-  if (loadedChunks.has(key)) return
-  const geometry = buildChunkGeometry({ data, chunkSize: worldMeta.chunkSize, yMin, yMax })
-  const material = new THREE.MeshLambertMaterial({ vertexColors: true })
-  const mesh = new THREE.Mesh(geometry, material)
-  mesh.matrixAutoUpdate = false
-  mesh.position.set(cx * worldMeta.chunkSize, 0, cz * worldMeta.chunkSize)
-  mesh.updateMatrix()
-  scene.add(mesh)
-  loadedChunks.set(key, mesh)
-}
-
 function handleState(msg) {
   if (!myId) return
   const players = msg.players
@@ -147,29 +126,9 @@ function handleState(msg) {
     const mesh = getOrCreatePlayerMesh(p.id)
     mesh.position.set(p.x, p.y, p.z)
     if (p.id === myId) {
-      // camera follows local player
       const eyeHeight = 1.6
-      camera.position.lerp(new THREE.Vector3(p.x, p.y + eyeHeight, p.z), 0.5)
+      camera.position.set(p.x, p.y + eyeHeight, p.z)
       camera.rotation.set(pitch, yaw, 0, 'YXZ')
-      ensureChunksAround({ x: p.x, z: p.z }, 3)
-    }
-  }
-}
-
-function ensureChunksAround(pos, radius) {
-  if (!worldMeta) return
-  const { chunkSize } = worldMeta
-  const centerCx = Math.floor(pos.x / chunkSize)
-  const centerCz = Math.floor(pos.z / chunkSize)
-  for (let dz = -radius; dz <= radius; dz++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      const cx = centerCx + dx
-      const cz = centerCz + dz
-      const key = `${cx},${cz}`
-      if (!requestedChunks.has(key)) {
-        socket?.send(JSON.stringify({ type: 'requestChunk', cx, cz }))
-        requestedChunks.add(key)
-      }
     }
   }
 }

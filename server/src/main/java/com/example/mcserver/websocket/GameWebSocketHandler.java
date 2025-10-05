@@ -27,14 +27,10 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         sessions.put(session.getId(), session);
         gameService.onPlayerConnect(session.getId());
-        // Send hello with world meta
-        var meta = gameService.getWorldMeta();
+        // Send hello with only player id
         send(session, objectMapper.createObjectNode()
                 .put("type", "hello")
-                .put("id", session.getId())
-                .put("chunkSize", meta.chunkSize())
-                .put("yMin", meta.yMin())
-                .put("yMax", meta.yMax()));
+                .put("id", session.getId()));
     }
 
     @Override
@@ -45,20 +41,7 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             case "input":
                 gameService.handlePlayerInput(session.getId(), root.path("input"));
                 break;
-            case "requestChunk":
-                int cx = root.path("cx").asInt();
-                int cz = root.path("cz").asInt();
-                var chunk = gameService.getChunk(cx, cz);
-                send(session, objectMapper.createObjectNode()
-                        .put("type", "chunk")
-                        .put("cx", cx)
-                        .put("cz", cz)
-                        .put("format", "dense")
-                        .put("size", chunk.blocks().length)
-                        .put("yMin", chunk.yMin())
-                        .put("yMax", chunk.yMax())
-                        .set("data", objectMapper.valueToTree(chunk.blocks())));
-                break;
+            // no world/chunk messages in flat world mode
             default:
                 break;
         }
