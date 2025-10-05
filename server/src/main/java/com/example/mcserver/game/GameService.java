@@ -2,16 +2,21 @@ package com.example.mcserver.game;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
-import jakarta.annotation.PostConstruct;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class GameService {
     private final Map<String, Player> players = new ConcurrentHashMap<>();
     private final Map<String, Integer> blocks = new ConcurrentHashMap<>(); // key: "x,y,z" -> type id
+    private static final double PLAYER_HALF = 0.3;
+    private static final double PLAYER_HEIGHT = 1.8;
+    private static final double EPS = 1e-3;
+
+    public GameService() {
+        seedDemo();
+    }
 
     public static class Vec3 {
         public double x, y, z;
@@ -86,7 +91,6 @@ public class GameService {
         return x + "," + y + "," + z;
     }
 
-    @PostConstruct
     public void seedDemo() {
         // Stone pad near origin (type 1)
         for (int x = -4; x <= 4; x++) {
@@ -119,18 +123,64 @@ public class GameService {
         p.velocity.x *= Math.pow(0.92, dt * 60);
         p.velocity.z *= Math.pow(0.92, dt * 60);
 
-        // integrate
-        p.position.x += p.velocity.x * dt;
-        p.position.y += p.velocity.y * dt;
-        p.position.z += p.velocity.z * dt;
+        double dx = p.velocity.x * dt;
+        double dy = p.velocity.y * dt;
+        double dz = p.velocity.z * dt;
 
-        // collide with ground plane y=0
-        if (p.position.y <= 0) {
-            p.position.y = 0;
-            if (p.velocity.y < 0) p.velocity.y = 0;
-            p.onGround = true;
+        // move X
+        if (!collides(p.position.x + dx, p.position.y, p.position.z)) {
+            p.position.x += dx;
         } else {
-            p.onGround = false;
+            p.velocity.x = 0;
         }
+
+        // move Y
+        p.onGround = false;
+        if (!collides(p.position.x, p.position.y + dy, p.position.z)) {
+            p.position.y += dy;
+        } else {
+            if (dy < 0) p.onGround = true;
+            p.velocity.y = 0;
+        }
+
+        // move Z
+        if (!collides(p.position.x, p.position.y, p.position.z + dz)) {
+            p.position.z += dz;
+        } else {
+            p.velocity.z = 0;
+        }
+    }
+
+    private boolean collides(double cx, double cy, double cz) {
+        double minX = cx - PLAYER_HALF;
+        double minY = cy;
+        double minZ = cz - PLAYER_HALF;
+        double width = PLAYER_HALF * 2;
+        double height = PLAYER_HEIGHT;
+        double depth = PLAYER_HALF * 2;
+
+        int minXi = (int) Math.floor(minX);
+        int maxXi = (int) Math.floor(minX + width - EPS);
+        int minYi = (int) Math.floor(minY);
+        int maxYi = (int) Math.floor(minY + height - EPS);
+        int minZi = (int) Math.floor(minZ);
+        int maxZi = (int) Math.floor(minZ + depth - EPS);
+
+        // ground plane as solid below y=0
+        if (minYi < 0) return true;
+
+        for (int y = minYi; y <= maxYi; y++) {
+            for (int x = minXi; x <= maxXi; x++) {
+                for (int z = minZi; z <= maxZi; z++) {
+                    if (isSolidCell(x, y, z)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isSolidCell(int x, int y, int z) {
+        if (y < 0) return true;
+        return blocks.containsKey(key(x, y, z));
     }
 }
