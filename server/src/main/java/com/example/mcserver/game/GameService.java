@@ -36,6 +36,9 @@ public class GameService {
         public String targetPlayerId; // police target
         public double thinkTimer = 0; // seconds until next decision
         public double shootCooldown = 0; // seconds until next shot
+        public String aiState = "idle";
+        public Integer coverX = null;
+        public Integer coverZ = null;
         public NPC(String id, String kind) { this.id = id; this.kind = kind; }
     }
 
@@ -153,48 +156,87 @@ public class GameService {
                     n.velocity.z = vz * 2.5;
                 }
             } else if ("police".equals(n.kind)) {
+                // periodic decision making
                 if (n.thinkTimer <= 0) {
                     n.thinkTimer = 0.25;
                     // choose threatened player if any
                     String target = pickHighestThreatPlayer();
                     if (target != null) n.targetPlayerId = target;
-                    Player nearest = (n.targetPlayerId != null) ? players.get(n.targetPlayerId) : null;
-                    // if no threat, stay near nearest villager
-                    if (nearest == null) {
-                        NPC nearestVill = null; double best = Double.MAX_VALUE;
-                        for (NPC m : npcs.values()) {
-                            if (!"villager".equals(m.kind)) continue;
-                            double dx = m.position.x - n.position.x;
-                            double dz = m.position.z - n.position.z;
-                            double d2 = dx*dx + dz*dz;
-                            if (d2 < best) { best = d2; nearestVill = m; }
-                        }
-                        if (nearestVill != null) {
-                            double dx = nearestVill.position.x - n.position.x;
-                            double dz = nearestVill.position.z - n.position.z;
-                            double len = Math.hypot(dx, dz);
-                            if (len > 0) { dx/=len; dz/=len; }
-                            n.velocity.x = dx * 3.5;
-                            n.velocity.z = dz * 3.5;
+                    // sometimes re-evaluate cover
+                    if (rng.nextDouble() < 0.3) { n.coverX = null; n.coverZ = null; }
+                }
+                Player t = (n.targetPlayerId != null) ? players.get(n.targetPlayerId) : null;
+                if (t == null) {
+                    // guard nearest villager
+                    NPC nearestVill = null; double best = Double.MAX_VALUE;
+                    for (NPC m : npcs.values()) {
+                        if (!"villager".equals(m.kind)) continue;
+                        double dx = m.position.x - n.position.x;
+                        double dz = m.position.z - n.position.z;
+                        double d2 = dx*dx + dz*dz;
+                        if (d2 < best) { best = d2; nearestVill = m; }
+                    }
+                    if (nearestVill != null) {
+                        double dx = nearestVill.position.x - n.position.x;
+                        double dz = nearestVill.position.z - n.position.z;
+                        double len = Math.hypot(dx, dz);
+                        if (len > 0) { dx/=len; dz/=len; }
+                        n.velocity.x = dx * 2.5;
+                        n.velocity.z = dz * 2.5;
+                    }
+                } else {
+                    double tx = t.position.x, tz = t.position.z;
+                    double dx = tx - n.position.x;
+                    double dz = tz - n.position.z;
+                    double dist = Math.hypot(dx, dz);
+                    // desired distance band
+                    double minD = 10.0, maxD = 20.0;
+                    // seek cover if close and no cover
+                    if ((n.coverX == null || n.coverZ == null) && dist < maxD) {
+                        int[] cover = findCoverNear(n, t);
+                        if (cover != null) { n.coverX = cover[0]; n.coverZ = cover[1]; }
+                    }
+                    if (n.coverX != null && n.coverZ != null) {
+                        double cx = n.coverX + 0.5, cz = n.coverZ + 0.5;
+                        double cdx = cx - n.position.x, cdz = cz - n.position.z;
+                        double clen = Math.hypot(cdx, cdz);
+                        if (clen > 0.6) {
+                            // move to cover
+                            cdx /= clen; cdz /= clen;
+                            n.velocity.x = cdx * 3.0; n.velocity.z = cdz * 3.0;
+                        } else {
+                            // at cover: hold, occasionally peek and shoot
+                            n.velocity.x = 0; n.velocity.z = 0;
+                            boolean los = hasLineOfSight(n.position.x, n.position.y + 1.2, n.position.z, tx, t.position.y + 1.2, tz);
+                            if (!los) {
+                                // side peek
+                                double perpX = -dz / Math.max(0.001, dist);
+                                double perpZ = dx / Math.max(0.001, dist);
+                                double dir = rng.nextBoolean() ? 1 : -1;
+                                n.velocity.x += perpX * dir * 1.8;
+                                n.velocity.z += perpZ * dir * 1.8;
+                            } else if (n.shootCooldown <= 0) {
+                                shootAt(n.position.x, n.position.y + 1.4, n.position.z, tx, t.position.y + 1.0, tz, 38.0);
+                                n.shootCooldown = 1.0;
+                            }
                         }
                     } else {
-                        double dx = nearest.position.x - n.position.x;
-                        double dz = nearest.position.z - n.position.z;
-                        double len = Math.hypot(dx, dz);
-            if (len > 0) { dx/=len; dz/=len; }
-                        n.velocity.x = dx * 4.5;
-                        n.velocity.z = dz * 4.5;
-                        // shoot if close enough and cooldown ready
-                        double dist2 = distance2(n.position, nearest.position);
-                        if (dist2 < 15*15 && n.shootCooldown <= 0) {
-                            double sx = n.position.x, sy = n.position.y + 1.4, sz = n.position.z;
-                            double vx = nearest.position.x - sx;
-                            double vy = (nearest.position.y + 1.0) - sy;
-                            double vz = nearest.position.z - sz;
-                            double l = Math.sqrt(vx*vx + vy*vy + vz*vz);
-                            if (l > 0) { vx/=l; vy/=l; vz/=l; }
-                            projectiles.add(new Projectile(null, new Vec3(sx, sy, sz), new Vec3(vx*35, vy*35, vz*35), 2.0));
-                            n.shootCooldown = 0.8;
+                        // no cover: keep distance and strafe
+                        double ux = dx / Math.max(0.001, dist), uz = dz / Math.max(0.001, dist);
+                        double moveX = 0, moveZ = 0;
+                        if (dist < minD) { moveX -= ux * 3.0; moveZ -= uz * 3.0; }
+                        else if (dist > maxD) { moveX += ux * 3.5; moveZ += uz * 3.5; }
+                        // strafe component
+                        double sx = -uz, sz = ux;
+                        double sdir = rng.nextBoolean() ? 1 : -1;
+                        moveX += sx * sdir * 2.0;
+                        moveZ += sz * sdir * 2.0;
+                        n.velocity.x = moveX; n.velocity.z = moveZ;
+                        // opportunistic shot if clear LOS
+                        boolean los = hasLineOfSight(n.position.x, n.position.y + 1.2, n.position.z, tx, t.position.y + 1.2, tz);
+                        if (los && n.shootCooldown <= 0 && dist < 22.0) {
+                            shootAt(n.position.x, n.position.y + 1.4, n.position.z, tx, t.position.y + 1.0, tz, 40.0);
+                            n.shootCooldown = 0.9;
                         }
                     }
                 }
@@ -261,6 +303,53 @@ public class GameService {
         Vec3 start = new Vec3(p.position.x, p.position.y + 1.4, p.position.z);
         Vec3 vel = new Vec3(dx * 40, dy * 40, dz * 40);
         projectiles.add(new Projectile(playerId, start, vel, 2.0));
+    }
+
+    private void shootAt(double sx, double sy, double sz, double tx, double ty, double tz, double speed) {
+        double vx = tx - sx, vy = ty - sy, vz = tz - sz;
+        double l = Math.sqrt(vx*vx + vy*vy + vz*vz);
+        if (l == 0) return; vx/=l; vy/=l; vz/=l;
+        projectiles.add(new Projectile(null, new Vec3(sx, sy, sz), new Vec3(vx*speed, vy*speed, vz*speed), 2.0));
+    }
+
+    private boolean hasLineOfSight(double x0, double y0, double z0, double x1, double y1, double z1) {
+        double dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+        double dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        int steps = Math.max(1, (int)Math.ceil(dist * 3));
+        for (int i = 1; i <= steps; i++) {
+            double t = i / (double) steps;
+            double x = x0 + dx * t;
+            double y = y0 + dy * t;
+            double z = z0 + dz * t;
+            int cx = (int)Math.floor(x);
+            int cy = (int)Math.floor(y);
+            int cz = (int)Math.floor(z);
+            if (isSolidCell(cx, cy, cz)) return false;
+        }
+        return true;
+    }
+
+    private int[] findCoverNear(NPC n, Player t) {
+        int r = 8;
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                int bx = (int)Math.floor(n.position.x) + dx;
+                int bz = (int)Math.floor(n.position.z) + dz;
+                int by = 1;
+                if (isSolidCell(bx, by, bz)) {
+                    double vx = (bx + 0.5) - t.position.x;
+                    double vz = (bz + 0.5) - t.position.z;
+                    int sx = vx >= 0 ? 1 : -1;
+                    int sz = vz >= 0 ? 1 : -1;
+                    int cx = bx + sx;
+                    int cz = bz + sz;
+                    if (!isSolidCell(cx, 0, cz) && !isSolidCell(cx, 1, cz)) {
+                        return new int[]{cx, cz};
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private String pickHighestThreatPlayer() {
