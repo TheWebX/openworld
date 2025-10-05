@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -13,6 +14,17 @@ public class GameService {
     private static final double PLAYER_HALF = 0.3;
     private static final double PLAYER_HEIGHT = 1.8;
     private static final double EPS = 1e-3;
+    private static final int TYPE_STONE = 1;
+    private static final int TYPE_WOOD = 2;
+    private static final int TYPE_LEAVES = 3;
+    private static final int TYPE_DIRT = 4;
+    private static final int TYPE_SAND = 5;
+    private static final int TYPE_WATER = 6;
+    private static final int TYPE_ROAD = 7;
+    private static final int TYPE_GLASS = 8;
+    private static final int TYPE_ROOF = 9;
+
+    private final Random rng = new Random(1337L);
 
     public GameService() {
         seedDemo();
@@ -33,7 +45,13 @@ public class GameService {
     }
 
     public void onPlayerConnect(String sessionId) {
-        players.put(sessionId, new Player(sessionId));
+        Player p = new Player(sessionId);
+        // spawn on top of surface near origin
+        int sx = 0, sz = 0;
+        int sy = getSurfaceY(sx, sz);
+        p.position = new Vec3(sx + 0.5, sy, sz + 0.5);
+        p.onGround = true;
+        players.put(sessionId, p);
     }
 
     public void onPlayerDisconnect(String sessionId) {
@@ -92,36 +110,130 @@ public class GameService {
     }
 
     public void seedDemo() {
-        // Stone pad near origin (type 1)
-        for (int x = -4; x <= 4; x++) {
-            for (int z = -4; z <= 4; z++) {
-                setBlock(x, 0, z, 1);
-            }
-        }
-        // Tree trunk (type 2) and leaves canopy (type 3)
-        int tx = 6, tz = 6;
-        for (int y = 0; y <= 3; y++) setBlock(tx, y, tz, 2);
-        for (int y = 3; y <= 5; y++) {
-            for (int dx = -2; dx <= 2; dx++) {
-                for (int dz = -2; dz <= 2; dz++) {
-                    if (Math.abs(dx) + Math.abs(dz) <= 3) setBlock(tx + dx, y, tz + dz, 3);
+        // Clear and generate a small city-like area [-64,64]
+        blocks.clear();
+        int min = -64, max = 64;
+
+        // Roads grid every 16 units
+        for (int x = min; x <= max; x++) {
+            for (int z = min; z <= max; z++) {
+                if (x % 16 == 0 || z % 16 == 0) {
+                    setBlock(x, 0, z, TYPE_ROAD);
                 }
             }
         }
-        // Dirt pile (type 4)
-        for (int x = -8; x <= -5; x++) {
-            for (int z = -8; z <= -5; z++) {
-                setBlock(x, 0, z, 4);
-                if ((x + z) % 2 == 0) setBlock(x, 1, z, 4);
+
+        // Lakes: place 2-3 ellipses filled with water at y=1
+        int lakeCount = 3;
+        for (int i = 0; i < lakeCount; i++) {
+            int cx = rng.nextInt(max - min + 1) + min;
+            int cz = rng.nextInt(max - min + 1) + min;
+            int rx = 6 + rng.nextInt(8);
+            int rz = 6 + rng.nextInt(8);
+            for (int x = cx - rx; x <= cx + rx; x++) {
+                for (int z = cz - rz; z <= cz + rz; z++) {
+                    double nx = (x - cx) / (double) rx;
+                    double nz = (z - cz) / (double) rz;
+                    if (nx * nx + nz * nz <= 1.0) {
+                        if (x % 16 != 0 && z % 16 != 0) { // avoid roads
+                            setBlock(x, 1, z, TYPE_WATER);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Houses near roads (at offsets)
+        for (int gx = min; gx <= max; gx += 16) {
+            for (int gz = min; gz <= max; gz += 16) {
+                if (rng.nextDouble() < 0.6) {
+                    int ox = gx + (rng.nextBoolean() ? 3 : -10);
+                    int oz = gz + (rng.nextBoolean() ? 3 : -10);
+                    buildHouse(ox, oz, 7, 7);
+                }
+            }
+        }
+
+        // Trees scattered
+        for (int i = 0; i < 80; i++) {
+            int x = rng.nextInt(max - min + 1) + min;
+            int z = rng.nextInt(max - min + 1) + min;
+            if (x % 16 == 0 || z % 16 == 0) continue; // not on roads
+            if (getType(x, 1, z) == TYPE_WATER) continue;
+            buildTree(x, z);
+        }
+    }
+
+    private void buildHouse(int baseX, int baseZ, int w, int d) {
+        // ensure area is not water
+        for (int x = baseX; x < baseX + w; x++) {
+            for (int z = baseZ; z < baseZ + d; z++) {
+                if (getType(x, 1, z) == TYPE_WATER) return;
+            }
+        }
+        // floor
+        for (int x = baseX; x < baseX + w; x++) {
+            for (int z = baseZ; z < baseZ + d; z++) {
+                setBlock(x, 0, z, TYPE_STONE);
+            }
+        }
+        // walls
+        for (int y = 1; y <= 3; y++) {
+            for (int x = baseX; x < baseX + w; x++) {
+                setBlock(x, y, baseZ, TYPE_WOOD);
+                setBlock(x, y, baseZ + d - 1, TYPE_WOOD);
+            }
+            for (int z = baseZ; z < baseZ + d; z++) {
+                setBlock(baseX, y, z, TYPE_WOOD);
+                setBlock(baseX + w - 1, y, z, TYPE_WOOD);
+            }
+        }
+        // door opening
+        int doorX = baseX + w / 2;
+        removeBlock(doorX, 1, baseZ);
+        removeBlock(doorX, 2, baseZ);
+        // windows
+        setBlock(baseX + 1, 2, baseZ, TYPE_GLASS);
+        setBlock(baseX + w - 2, 2, baseZ, TYPE_GLASS);
+        setBlock(baseX + 1, 2, baseZ + d - 1, TYPE_GLASS);
+        setBlock(baseX + w - 2, 2, baseZ + d - 1, TYPE_GLASS);
+        // roof
+        for (int x = baseX - 1; x <= baseX + w; x++) {
+            for (int z = baseZ - 1; z <= baseZ + d; z++) {
+                setBlock(x, 4, z, TYPE_ROOF);
             }
         }
     }
 
+    private void buildTree(int x, int z) {
+        for (int y = 0; y <= 3; y++) setBlock(x, y, z, TYPE_WOOD);
+        for (int y = 3; y <= 5; y++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    if (Math.abs(dx) + Math.abs(dz) <= 3) setBlock(x + dx, y, z + dz, TYPE_LEAVES);
+                }
+            }
+        }
+    }
+
+    private Integer getType(int x, int y, int z) {
+        return blocks.get(key(x, y, z));
+    }
+
+    private int getSurfaceY(int x, int z) {
+        int y = 0;
+        while (y < 64 && blocks.containsKey(key(x, y, z))) y++;
+        return y; // first empty space above stack, >=0
+    }
+
     private void applyFlatPhysics(Player p, double dt) {
-        // gravity and damping
-        p.velocity.y -= 25 * dt;
-        p.velocity.x *= Math.pow(0.92, dt * 60);
-        p.velocity.z *= Math.pow(0.92, dt * 60);
+        boolean inWater = intersectsWater(p.position.x, p.position.y, p.position.z);
+        double g = inWater ? 8.0 : 25.0;
+        p.velocity.y -= g * dt;
+        double damp = inWater ? 0.85 : 0.92;
+        p.velocity.x *= Math.pow(damp, dt * 60);
+        p.velocity.z *= Math.pow(damp, dt * 60);
+        if (inWater && p.velocity.y < -3) p.velocity.y = -3; // limit sinking speed
 
         double dx = p.velocity.x * dt;
         double dy = p.velocity.y * dt;
@@ -181,6 +293,34 @@ public class GameService {
 
     private boolean isSolidCell(int x, int y, int z) {
         if (y < 0) return true;
-        return blocks.containsKey(key(x, y, z));
+        Integer t = blocks.get(key(x, y, z));
+        if (t == null) return false;
+        return t != TYPE_WATER; // water is non-solid
+    }
+
+    private boolean intersectsWater(double cx, double cy, double cz) {
+        double minX = cx - PLAYER_HALF;
+        double minY = cy;
+        double minZ = cz - PLAYER_HALF;
+        double width = PLAYER_HALF * 2;
+        double height = PLAYER_HEIGHT;
+        double depth = PLAYER_HALF * 2;
+
+        int minXi = (int) Math.floor(minX);
+        int maxXi = (int) Math.floor(minX + width - EPS);
+        int minYi = (int) Math.floor(minY);
+        int maxYi = (int) Math.floor(minY + height - EPS);
+        int minZi = (int) Math.floor(minZ);
+        int maxZi = (int) Math.floor(minZ + depth - EPS);
+
+        for (int y = minYi; y <= maxYi; y++) {
+            for (int x = minXi; x <= maxXi; x++) {
+                for (int z = minZi; z <= maxZi; z++) {
+                    Integer t = getType(x, y, z);
+                    if (t != null && t == TYPE_WATER) return true;
+                }
+            }
+        }
+        return false;
     }
 }
