@@ -20,7 +20,7 @@ public class GameService {
 
     public static class Player {
         public String id;
-        public Vec3 position = new Vec3(0, 1.6, 0);
+        public Vec3 position = new Vec3(0, 0, 0);
         public Vec3 velocity = new Vec3(0, 0, 0);
         public boolean onGround = true;
         public Player(String id) { this.id = id; }

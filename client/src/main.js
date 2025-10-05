@@ -221,7 +221,7 @@ function handleState(msg) {
     mesh.position.set(p.x, p.y, p.z)
     if (p.id === myId) {
       const eyeHeight = 1.6
-      camera.position.set(p.x, p.y + eyeHeight, p.z)
+      camera.position.set(p.x, Math.max(p.y + eyeHeight, 0.2), p.z)
       camera.rotation.set(pitch, yaw, 0, 'YXZ')
     }
   }
@@ -245,6 +245,8 @@ window.addEventListener('mousedown', (e) => {
   camera.rotation.set(pitch, yaw, 0, 'YXZ')
   const blockList = Array.from(blockMeshes.values())
   const hits = raycaster.intersectObjects(blockList, false)
+  // also check ground plane for placement
+  const p = new THREE.Vector3()
   if (e.button === 2) { // right: remove block if hit
     if (hits.length) {
       const hit = hits[0]
@@ -269,7 +271,6 @@ window.addEventListener('mousedown', (e) => {
       }
     } else {
       // place on ground where ray hits y=0
-      const p = new THREE.Vector3()
       if (raycaster.ray.intersectPlane(groundPlane, p)) {
         const x = Math.floor(p.x)
         const z = Math.floor(p.z)
