@@ -31,8 +31,8 @@ crosshair.style.opacity = '0'
 document.body.appendChild(crosshair)
 
 // Three.js setup
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
-const targetDPR = Math.min(window.devicePixelRatio || 1, 1.5)
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
+const targetDPR = Math.min(window.devicePixelRatio || 1, 1.25)
 renderer.setPixelRatio(targetDPR)
 renderer.setSize(window.innerWidth, window.innerHeight)
 app.appendChild(renderer.domElement)
@@ -59,14 +59,14 @@ camera.add(fpGroup)
 fpGroup.visible = false
 let fpRecoil = 0
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.5)
+const ambient = new THREE.AmbientLight(0xffffff, 0.4)
 scene.add(ambient)
-const sun = new THREE.DirectionalLight(0xffffff, 0.65)
+const sun = new THREE.DirectionalLight(0xffffff, 0.55)
 sun.position.set(0.5, 1, 0.3)
 scene.add(sun)
 
 // Ground plane (grass style)
-const groundGeom = new THREE.PlaneGeometry(1200, 1200)
+const groundGeom = new THREE.PlaneGeometry(1200, 1200, 1, 1)
 groundGeom.rotateX(-Math.PI / 2)
 function createGrassTexture() {
   const size = 128
@@ -98,7 +98,7 @@ function createGrassTexture() {
   tex.wrapS = THREE.RepeatWrapping
   tex.wrapT = THREE.RepeatWrapping
   tex.magFilter = THREE.NearestFilter
-  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.minFilter = THREE.NearestFilter
   tex.repeat.set(512, 512)
   return tex
 }
@@ -239,7 +239,7 @@ function getBlockMaterial(type) {
   ctx.putImageData(img, 0, 0)
   const tex = new THREE.CanvasTexture(canvas)
   tex.magFilter = THREE.NearestFilter
-  tex.minFilter = THREE.LinearMipMapLinearFilter || THREE.LinearMipmapLinearFilter
+  tex.minFilter = THREE.NearestFilter
   const transparent = (type === 6 || type === 8)
   const opacity = (type === 6) ? 0.6 : (type === 8 ? 0.35 : 1.0)
   const mat = new THREE.MeshLambertMaterial({ map: tex, transparent, opacity })
@@ -253,6 +253,8 @@ function createBlockMesh(x, y, z, type = 1) {
   const mesh = new THREE.Mesh(geom, mat)
   mesh.position.set(x + 0.5, y + 0.5, z + 0.5)
   mesh.userData.cell = { x, y, z, type }
+  mesh.matrixAutoUpdate = false
+  mesh.updateMatrix()
   scene.add(mesh)
   return mesh
 }
@@ -606,11 +608,16 @@ function playGunshot() {
 }
 
 // Render loop
-function animate() {
+let lastTime = performance.now()
+let frameBudget = 1000 / 60
+function animate(now = performance.now()) {
   requestAnimationFrame(animate)
-  // apply simple recoil decay for first-person gun
+  const dt = now - lastTime
+  lastTime = now
   fpRecoil *= 0.85
   fpGroup.position.set(0.35, -0.35, -0.8 - fpRecoil)
-  renderer.render(scene, camera)
+  if (dt <= frameBudget * 1.5) {
+    renderer.render(scene, camera)
+  }
 }
 animate()
