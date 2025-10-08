@@ -1,0 +1,7 @@
+/.gradle-dist/
+/server/.gradle/
+/java-client/.gradle/
+/server/build/
+/java-client/build/
+/client/node_modules/
+/client/dist/
