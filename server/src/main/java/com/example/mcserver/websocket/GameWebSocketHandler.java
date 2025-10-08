@@ -56,6 +56,9 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
             case "input":
                 gameService.handlePlayerInput(session.getId(), root.path("input"));
                 break;
+            case "respawn":
+                gameService.respawn(session.getId());
+                break;
             case "shoot": {
                 var dirNode = root.path("dir");
                 double dx = dirNode.path("x").asDouble();
