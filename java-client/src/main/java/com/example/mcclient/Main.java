@@ -17,6 +17,8 @@ public class Main {
     private double yaw = 0, pitch = 0;
     private boolean pointerLocked = false;
     private float moveX = 0, moveZ = 0;
+    private boolean jump = false, sprint = false;
+    private int selectedType = 1; // 1..5 blocks; 6 gun
 
     private final ConcurrentLinkedQueue<String> outgoing = new ConcurrentLinkedQueue<>();
     private WSClient ws;
@@ -72,6 +74,13 @@ public class Main {
             if (key == GLFW.GLFW_KEY_S) moveZ = down ? -1 : 0;
             if (key == GLFW.GLFW_KEY_A) moveX = down ? -1 : 0;
             if (key == GLFW.GLFW_KEY_D) moveX = down ? 1 : 0;
+            if (key == GLFW.GLFW_KEY_SPACE) jump = down;
+            if (key == GLFW.GLFW_KEY_LEFT_SHIFT) sprint = down;
+            if (down) {
+                if (key >= GLFW.GLFW_KEY_1 && key <= GLFW.GLFW_KEY_6) {
+                    selectedType = (key - GLFW.GLFW_KEY_1) + 1;
+                }
+            }
         });
 
         // open websocket
@@ -104,6 +113,17 @@ public class Main {
             GL11.glVertex3f(-50, 0, 50);
             GL11.glEnd();
 
+            // draw blocks (very simple cubes)
+            if (ws != null && ws.state != null) {
+                for (var e : ws.state.blocks.entrySet()) {
+                    String[] parts = e.getKey().split(",");
+                    int x = Integer.parseInt(parts[0]);
+                    int y = Integer.parseInt(parts[1]);
+                    int z = Integer.parseInt(parts[2]);
+                    drawCube(x, y, z, e.getValue());
+                }
+            }
+
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
 
@@ -111,9 +131,42 @@ public class Main {
             if (ws != null && ws.isOpen()) {
                 double ax = Math.sin(yaw) * moveZ + Math.cos(yaw) * moveX;
                 double az = Math.cos(yaw) * moveZ - Math.sin(yaw) * moveX;
-                String json = String.format("{\"type\":\"input\",\"input\":{\"ax\":%.3f,\"az\":%.3f,\"jump\":false,\"sprint\":false,\"yaw\":%.3f,\"pitch\":%.3f}}", ax, az, yaw, pitch);
+                String json = String.format("{\"type\":\"input\",\"input\":{\"ax\":%.3f,\"az\":%.3f,\"jump\":%s,\"sprint\":%s,\"yaw\":%.3f,\"pitch\":%.3f}}",
+                        ax, az, jump?"true":"false", sprint?"true":"false", yaw, pitch);
                 outgoing.offer(json);
             }
         }
+    }
+
+    private void drawCube(int x, int y, int z, int type) {
+        float fx = x + 0.5f, fy = y + 0.5f, fz = z + 0.5f;
+        float s = 0.5f;
+        GL11.glPushMatrix();
+        GL11.glTranslatef(fx, fy, fz);
+        // color per type
+        switch (type) {
+            case 1 -> GL11.glColor3f(0.47f,0.47f,0.47f);
+            case 2 -> GL11.glColor3f(0.55f,0.35f,0.17f);
+            case 3 -> GL11.glColor3f(0.25f,0.66f,0.25f);
+            case 4 -> GL11.glColor3f(0.6f,0.4f,0.2f);
+            case 5 -> GL11.glColor3f(0.76f,0.7f,0.5f);
+            case 6 -> GL11.glColor4f(0.23f,0.65f,1f,0.6f);
+            default -> GL11.glColor3f(0.8f,0.8f,0.8f);
+        }
+        GL11.glBegin(GL11.GL_QUADS);
+        // +Y
+        GL11.glVertex3f(-s, s, -s); GL11.glVertex3f( s, s, -s); GL11.glVertex3f( s, s,  s); GL11.glVertex3f(-s, s,  s);
+        // -Y
+        GL11.glVertex3f(-s,-s, s); GL11.glVertex3f( s,-s, s); GL11.glVertex3f( s,-s,-s); GL11.glVertex3f(-s,-s,-s);
+        // +X
+        GL11.glVertex3f( s,-s,-s); GL11.glVertex3f( s, s,-s); GL11.glVertex3f( s, s, s); GL11.glVertex3f( s,-s, s);
+        // -X
+        GL11.glVertex3f(-s,-s, s); GL11.glVertex3f(-s, s, s); GL11.glVertex3f(-s, s,-s); GL11.glVertex3f(-s,-s,-s);
+        // +Z
+        GL11.glVertex3f(-s,-s, s); GL11.glVertex3f( s,-s, s); GL11.glVertex3f( s, s, s); GL11.glVertex3f(-s, s, s);
+        // -Z
+        GL11.glVertex3f( s,-s,-s); GL11.glVertex3f(-s,-s,-s); GL11.glVertex3f(-s, s,-s); GL11.glVertex3f( s, s,-s);
+        GL11.glEnd();
+        GL11.glPopMatrix();
     }
 }

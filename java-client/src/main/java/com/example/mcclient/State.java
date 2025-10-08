@@ -21,13 +21,9 @@ public class State {
     }
 
     public volatile String myId = null;
-    public final ConcurrentHashMap<Long, Integer> blocks = new ConcurrentHashMap<>(); // key packed x,y,z
+    public final ConcurrentHashMap<String, Integer> blocks = new ConcurrentHashMap<>(); // key: "x,y,z"
     public volatile List<Player> players = List.of();
     public volatile List<NPC> npcs = List.of();
-
-    public static long pack(int x,int y,int z){
-        return (((long)(x & 0x3FFFF))<<42) | (((long)(y & 0x3FFFF))<<21) | (long)(z & 0x3FFFF);
-    }
 
     public void updateFrom(JsonNode root){
         // players
@@ -69,7 +65,7 @@ public class State {
         int x = root.path("x").asInt();
         int y = root.path("y").asInt();
         int z = root.path("z").asInt();
-        long key = pack(x,y,z);
+        String key = x+","+y+","+z;
         if ("set".equals(action)){
             int t = root.path("block").asInt(1);
             blocks.put(key, t);
@@ -87,7 +83,7 @@ public class State {
                 int y = b.path("y").asInt();
                 int z = b.path("z").asInt();
                 int t = b.path("type").asInt(1);
-                blocks.put(pack(x,y,z), t);
+                blocks.put(x+","+y+","+z, t);
             }
         }
     }
