@@ -142,11 +142,6 @@ function isWithinRadius(x, z) {
   const cx = camera.position.x || 0, cz = camera.position.z || 0
   return dist2xz(x + 0.5, z + 0.5, cx, cz) <= VISIBLE_RADIUS * VISIBLE_RADIUS
 }
-function dist2xz(ax, az, bx, bz) { const dx = ax - bx, dz = az - bz; return dx*dx + dz*dz }
-function isWithinRadius(x, z) {
-  const cx = camera.position.x || 0, cz = camera.position.z || 0
-  return dist2xz(x + 0.5, z + 0.5, cx, cz) <= VISIBLE_RADIUS * VISIBLE_RADIUS
-}
 
 function createHumanRig(palette) {
   const group = new THREE.Group()
@@ -634,7 +629,7 @@ function animate(now = performance.now()) {
   fpRecoil *= 0.85
   fpGroup.position.set(0.35, -0.35, -0.8 - fpRecoil)
   // adapt to slower devices (fallback to ~30 FPS)
-  if (now - lastRender > 50) renderInterval = 1000 / 30; else renderInterval = 1000 / 60
+  if (now - lastRender > 200) renderInterval = 1000 / 30; else renderInterval = 1000 / 60
   // update visible block meshes near camera
   updateVisibleBlocks()
   if (now - lastRender >= renderInterval) {
