@@ -11,6 +11,8 @@ import org.lwjgl.system.MemoryUtil;
 import java.net.URI;
 import java.nio.FloatBuffer;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Main {
     private long window;
@@ -23,6 +25,8 @@ public class Main {
     private long lastClickMs = 0;
     private float muzzleFlashTimer = 0f;
     private int winWidth = 1280, winHeight = 720;
+    private final Map<String, Rig> playerRigMap = new HashMap<>();
+    private final Map<String, Rig> npcRigMap = new HashMap<>();
 
     private final ConcurrentLinkedQueue<String> outgoing = new ConcurrentLinkedQueue<>();
     private WSClient ws;
@@ -45,6 +49,8 @@ public class Main {
         GLFW.glfwSetWindowSize(window, winWidth, winHeight);
         GL11.glViewport(0, 0, winWidth, winHeight);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glEnable(GL11.GL_CULL_FACE);
+        GL11.glCullFace(GL11.GL_BACK);
         // Basic perspective projection
         float fov = 70f;
         float aspect = (float) winWidth / (float) winHeight;
@@ -98,6 +104,10 @@ public class Main {
                 if (key >= GLFW.GLFW_KEY_1 && key <= GLFW.GLFW_KEY_6) {
                     selectedType = (key - GLFW.GLFW_KEY_1) + 1;
                 }
+                if (key == GLFW.GLFW_KEY_ESCAPE) {
+                    pointerLocked = false;
+                    GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+                }
             }
         });
 
@@ -132,24 +142,51 @@ public class Main {
             GL11.glVertex3f(-50, 0, 50);
             GL11.glEnd();
 
-            // draw blocks (very simple cubes)
+            // draw blocks and entities
             if (ws != null && ws.state != null) {
+                // opaque blocks first
                 for (var e : ws.state.blocks.entrySet()) {
+                    int t = e.getValue(); if (t==6 || t==8) continue;
                     String[] parts = e.getKey().split(",");
                     int x = Integer.parseInt(parts[0]);
                     int y = Integer.parseInt(parts[1]);
                     int z = Integer.parseInt(parts[2]);
-                    drawCube(x, y, z, e.getValue());
+                    drawCube(x, y, z, t);
                 }
-                // draw players and npcs as simple rigs
+                // transparent
+                GL11.glEnable(GL11.GL_BLEND);
+                GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+                for (var e : ws.state.blocks.entrySet()) {
+                    int t = e.getValue(); if (!(t==6 || t==8)) continue;
+                    String[] parts = e.getKey().split(",");
+                    int x = Integer.parseInt(parts[0]);
+                    int y = Integer.parseInt(parts[1]);
+                    int z = Integer.parseInt(parts[2]);
+                    drawCube(x, y, z, t);
+                }
+                GL11.glDisable(GL11.GL_BLEND);
+
+                // players rigs with walk animation
+                long now = System.currentTimeMillis();
                 for (var p : ws.state.players) {
                     if (ws.state.myId != null && ws.state.myId.equals(p.id)) continue;
-                    drawHumanRig((float)p.x, (float)p.y, (float)p.z, 0.8f, 0.5f, 0.2f);
+                    Rig rig = playerRigMap.computeIfAbsent(p.id, k -> new Rig());
+                    float swing = rig.update((float)p.x, (float)p.z, now);
+                    drawHumanRigAnimated((float)p.x, (float)p.y, (float)p.z, 0.99f, 0.66f, 0.55f, swing);
                 }
+                // NPC rigs
                 for (var n : ws.state.npcs) {
+                    Rig rig = npcRigMap.computeIfAbsent(n.id, k -> new Rig());
+                    float swing = rig.update((float)n.x, (float)n.z, now);
                     boolean police = "police".equals(n.kind);
-                    drawHumanRig((float)n.x, (float)n.y, (float)n.z, police?0.2f:0.6f, police?0.4f:0.7f, police?0.9f:0.5f);
+                    float r= police?0.2f:0.6f, g= police?0.4f:0.7f, b= police?0.9f:0.5f;
+                    drawHumanRigAnimated((float)n.x, (float)n.y, (float)n.z, r,g,b, swing);
                 }
+            }
+
+            // first-person hands + gun (simple boxes)
+            if (selectedType == 6 && pointerLocked) {
+                drawFPHandsGun();
             }
 
             // 2D HUD overlay (hotbar, crosshair, pause)
@@ -210,48 +247,110 @@ public class Main {
         GL11.glPushMatrix();
         GL11.glTranslatef(fx, fy, fz);
         // color per type
-        switch (type) {
-            case 1 -> GL11.glColor3f(0.47f,0.47f,0.47f);
-            case 2 -> GL11.glColor3f(0.55f,0.35f,0.17f);
-            case 3 -> GL11.glColor3f(0.25f,0.66f,0.25f);
-            case 4 -> GL11.glColor3f(0.6f,0.4f,0.2f);
-            case 5 -> GL11.glColor3f(0.76f,0.7f,0.5f);
-            case 6 -> GL11.glColor4f(0.23f,0.65f,1f,0.6f);
-            default -> GL11.glColor3f(0.8f,0.8f,0.8f);
-        }
+        float[] base = switch (type) {
+            case 1 -> new float[]{0.47f,0.47f,0.47f};
+            case 2 -> new float[]{0.55f,0.35f,0.17f};
+            case 3 -> new float[]{0.25f,0.66f,0.25f};
+            case 4 -> new float[]{0.6f,0.4f,0.2f};
+            case 5 -> new float[]{0.76f,0.7f,0.5f};
+            case 6 -> new float[]{0.23f,0.65f,1f};
+            default -> new float[]{0.8f,0.8f,0.8f};
+        };
+        // per-face slight noise to mimic JS texture
+        float n1 = noise(x,y,z)*0.08f, n2=noise(x+1,y,z)*0.08f, n3=noise(x,y+1,z)*0.08f, n4=noise(x,y,z+1)*0.08f;
         GL11.glBegin(GL11.GL_QUADS);
         // +Y
+        GL11.glColor3f(clamp(base[0]+n1),clamp(base[1]+n1),clamp(base[2]+n1));
         GL11.glVertex3f(-s, s, -s); GL11.glVertex3f( s, s, -s); GL11.glVertex3f( s, s,  s); GL11.glVertex3f(-s, s,  s);
         // -Y
+        GL11.glColor3f(clamp(base[0]+n2),clamp(base[1]+n2),clamp(base[2]+n2));
         GL11.glVertex3f(-s,-s, s); GL11.glVertex3f( s,-s, s); GL11.glVertex3f( s,-s,-s); GL11.glVertex3f(-s,-s,-s);
         // +X
+        GL11.glColor3f(clamp(base[0]+n3),clamp(base[1]+n3),clamp(base[2]+n3));
         GL11.glVertex3f( s,-s,-s); GL11.glVertex3f( s, s,-s); GL11.glVertex3f( s, s, s); GL11.glVertex3f( s,-s, s);
         // -X
+        GL11.glColor3f(clamp(base[0]+n4),clamp(base[1]+n4),clamp(base[2]+n4));
         GL11.glVertex3f(-s,-s, s); GL11.glVertex3f(-s, s, s); GL11.glVertex3f(-s, s,-s); GL11.glVertex3f(-s,-s,-s);
         // +Z
+        GL11.glColor3f(clamp(base[0]+n2),clamp(base[1]+n2),clamp(base[2]+n2));
         GL11.glVertex3f(-s,-s, s); GL11.glVertex3f( s,-s, s); GL11.glVertex3f( s, s, s); GL11.glVertex3f(-s, s, s);
         // -Z
+        GL11.glColor3f(clamp(base[0]+n3),clamp(base[1]+n3),clamp(base[2]+n3));
         GL11.glVertex3f( s,-s,-s); GL11.glVertex3f(-s,-s,-s); GL11.glVertex3f(-s, s,-s); GL11.glVertex3f( s, s,-s);
         GL11.glEnd();
         GL11.glPopMatrix();
     }
 
-    private void drawHumanRig(float x, float y, float z, float r, float g, float b) {
+    private void drawHumanRigAnimated(float x, float y, float z, float r, float g, float b, float swing) {
         GL11.glPushMatrix();
         GL11.glTranslatef(x, y, z);
-        GL11.glColor3f(r, g, b);
-        // body
-        GL11.glBegin(GL11.GL_QUADS);
-        float w=0.25f, h=0.8f, d=0.14f;
-        // top body quad (approx; simple pillar)
-        GL11.glVertex3f(-w, h, -d); GL11.glVertex3f(w, h, -d); GL11.glVertex3f(w, h, d); GL11.glVertex3f(-w, h, d);
-        GL11.glVertex3f(-w, 0, d); GL11.glVertex3f(w, 0, d); GL11.glVertex3f(w, 0, -d); GL11.glVertex3f(-w, 0, -d);
-        GL11.glVertex3f(w,0,-d); GL11.glVertex3f(w,h,-d); GL11.glVertex3f(w,h,d); GL11.glVertex3f(w,0,d);
-        GL11.glVertex3f(-w,0,d); GL11.glVertex3f(-w,h,d); GL11.glVertex3f(-w,h,-d); GL11.glVertex3f(-w,0,-d);
-        GL11.glVertex3f(-w,0,d); GL11.glVertex3f(w,0,d); GL11.glVertex3f(w,h,d); GL11.glVertex3f(-w,h,d);
-        GL11.glVertex3f(w,0,-d); GL11.glVertex3f(-w,0,-d); GL11.glVertex3f(-w,h,-d); GL11.glVertex3f(w,h,-d);
-        GL11.glEnd();
+        // legs
+        float legW=0.11f, legH=0.8f, legD=0.11f, legOffX=legW+0.05f;
+        GL11.glColor3f(r*0.5f,g*0.5f,b*0.5f);
+        // left leg
+        GL11.glPushMatrix();
+        GL11.glTranslatef(-legOffX, legH/2f, 0);
+        GL11.glRotatef((float)Math.toDegrees(swing), 1,0,0);
+        box(legW,legH,legD);
         GL11.glPopMatrix();
+        // right leg
+        GL11.glPushMatrix();
+        GL11.glTranslatef(legOffX, legH/2f, 0);
+        GL11.glRotatef((float)Math.toDegrees(-swing), 1,0,0);
+        box(legW,legH,legD);
+        GL11.glPopMatrix();
+        // body
+        GL11.glColor3f(r,g,b);
+        GL11.glPushMatrix();
+        GL11.glTranslatef(0, legH + 0.4f, 0);
+        box(0.25f,0.8f,0.14f);
+        GL11.glPopMatrix();
+        // arms
+        float armW=0.09f, armH=0.8f, armD=0.09f, armOffX=0.25f+armW;
+        GL11.glColor3f(1.0f, 0.84f, 0.7f);
+        GL11.glPushMatrix();
+        GL11.glTranslatef(-armOffX, legH + armH/2f, 0);
+        GL11.glRotatef((float)Math.toDegrees(-swing*0.8f), 1,0,0);
+        box(armW,armH,armD);
+        GL11.glPopMatrix();
+        GL11.glPushMatrix();
+        GL11.glTranslatef(armOffX, legH + armH/2f, 0);
+        GL11.glRotatef((float)Math.toDegrees(swing*0.8f), 1,0,0);
+        box(armW,armH,armD);
+        GL11.glPopMatrix();
+        // head
+        GL11.glColor3f(1.0f, 0.84f, 0.7f);
+        GL11.glPushMatrix();
+        GL11.glTranslatef(0, legH + 0.8f + 0.1f, 0);
+        box(0.25f,0.2f,0.25f);
+        GL11.glPopMatrix();
+        GL11.glPopMatrix();
+    }
+
+    private void box(float w,float h,float d){
+        float sX=w, sY=h, sZ=d;
+        GL11.glBegin(GL11.GL_QUADS);
+        // top
+        GL11.glVertex3f(-sX, sY, -sZ); GL11.glVertex3f(sX, sY, -sZ); GL11.glVertex3f(sX, sY, sZ); GL11.glVertex3f(-sX, sY, sZ);
+        GL11.glVertex3f(-sX, 0, sZ); GL11.glVertex3f(sX, 0, sZ); GL11.glVertex3f(sX, 0, -sZ); GL11.glVertex3f(-sX, 0, -sZ);
+        GL11.glVertex3f(sX,0,-sZ); GL11.glVertex3f(sX,sY,-sZ); GL11.glVertex3f(sX,sY,sZ); GL11.glVertex3f(sX,0,sZ);
+        GL11.glVertex3f(-sX,0,sZ); GL11.glVertex3f(-sX,sY,sZ); GL11.glVertex3f(-sX,sY,-sZ); GL11.glVertex3f(-sX,0,-sZ);
+        GL11.glVertex3f(-sX,0,sZ); GL11.glVertex3f(sX,0,sZ); GL11.glVertex3f(sX,sY,sZ); GL11.glVertex3f(-sX,sY,sZ);
+        GL11.glVertex3f(sX,0,-sZ); GL11.glVertex3f(-sX,0,-sZ); GL11.glVertex3f(-sX,sY,-sZ); GL11.glVertex3f(sX,sY,-sZ);
+        GL11.glEnd();
+    }
+
+    private static class Rig {
+        float lastX=Float.NaN, lastZ=Float.NaN, phase=0f; long lastT=0;
+        float update(float x,float z,long now){
+            if (Float.isNaN(lastX)) { lastX=x; lastZ=z; lastT=now; return 0f; }
+            float dx = x-lastX, dz = z-lastZ; float dist = (float)Math.sqrt(dx*dx+dz*dz);
+            float dt = Math.max(0.001f, (now-lastT)/1000f);
+            float speed = Math.min(1f, dist/(dt*5f));
+            phase += speed*dt*6f;
+            lastX=x; lastZ=z; lastT=now;
+            return (float)Math.sin(phase)*0.6f*speed;
+        }
     }
 
     private Vector3f getForward() {
@@ -359,5 +458,46 @@ public class Main {
             float bw=260,bh=60; rect((winWidth-bw)/2f,(winHeight-bh)/2f,bw,bh,0.1f,0.1f,0.1f,0.9f);
         }
         end2D();
+    }
+
+    private float clamp(float v){ return Math.max(0f, Math.min(1f, v)); }
+    private float noise(int x,int y,int z){
+        int n = x*73856093 ^ y*19349663 ^ z*83492791;
+        n ^= (n<<13);
+        return ((n * (n*n*15731 + 789221) + 1376312589) & 0x7fffffff)/ (float)0x7fffffff - 0.5f;
+    }
+
+    private void drawFPHandsGun() {
+        Vector3f cam = getCameraPosition();
+        GL11.glPushMatrix();
+        GL11.glTranslatef(cam.x, cam.y, cam.z);
+        GL11.glRotatef((float) Math.toDegrees(yaw), 0f,1f,0f);
+        GL11.glRotatef((float) Math.toDegrees(pitch), 1f,0f,0f);
+        GL11.glTranslatef(0.35f, -0.35f, -0.8f - muzzleFlashTimer*2f);
+        // arm
+        GL11.glColor3f(1.0f, 0.84f, 0.7f);
+        GL11.glBegin(GL11.GL_QUADS);
+        float aW=0.06f,aH=0.2f,aD=0.06f;
+        // simple arm cube
+        // top
+        GL11.glVertex3f(-aW, aH, -aD); GL11.glVertex3f(aW, aH, -aD); GL11.glVertex3f(aW, aH, aD); GL11.glVertex3f(-aW, aH, aD);
+        GL11.glVertex3f(-aW, 0, aD); GL11.glVertex3f(aW, 0, aD); GL11.glVertex3f(aW, 0, -aD); GL11.glVertex3f(-aW, 0, -aD);
+        GL11.glVertex3f(aW,0,-aD); GL11.glVertex3f(aW,aH,-aD); GL11.glVertex3f(aW,aH,aD); GL11.glVertex3f(aW,0,aD);
+        GL11.glVertex3f(-aW,0,aD); GL11.glVertex3f(-aW,aH,aD); GL11.glVertex3f(-aW,aH,-aD); GL11.glVertex3f(-aW,0,-aD);
+        GL11.glVertex3f(-aW,0,aD); GL11.glVertex3f(aW,0,aD); GL11.glVertex3f(aW,aH,aD); GL11.glVertex3f(-aW,aH,aD);
+        GL11.glVertex3f(aW,0,-aD); GL11.glVertex3f(-aW,0,-aD); GL11.glVertex3f(-aW,aH,-aD); GL11.glVertex3f(aW,aH,-aD);
+        GL11.glEnd();
+        // gun
+        GL11.glColor3f(0.2f,0.2f,0.2f);
+        GL11.glBegin(GL11.GL_QUADS);
+        float gW=0.12f,gH=0.06f,gD=0.25f;
+        GL11.glVertex3f(-gW, gH, -gD); GL11.glVertex3f(gW, gH, -gD); GL11.glVertex3f(gW, gH, gD); GL11.glVertex3f(-gW, gH, gD);
+        GL11.glVertex3f(-gW, 0, gD); GL11.glVertex3f(gW, 0, gD); GL11.glVertex3f(gW, 0, -gD); GL11.glVertex3f(-gW, 0, -gD);
+        GL11.glVertex3f(gW,0,-gD); GL11.glVertex3f(gW,gH,-gD); GL11.glVertex3f(gW,gH,gD); GL11.glVertex3f(gW,0,gD);
+        GL11.glVertex3f(-gW,0,gD); GL11.glVertex3f(-gW,gH,gD); GL11.glVertex3f(-gW,gH,-gD); GL11.glVertex3f(-gW,0,-gD);
+        GL11.glVertex3f(-gW,0,gD); GL11.glVertex3f(gW,0,gD); GL11.glVertex3f(gW,gH,gD); GL11.glVertex3f(-gW,gH,gD);
+        GL11.glVertex3f(gW,0,-gD); GL11.glVertex3f(-gW,0,-gD); GL11.glVertex3f(-gW,gH,-gD); GL11.glVertex3f(gW,gH,-gD);
+        GL11.glEnd();
+        GL11.glPopMatrix();
     }
 }
