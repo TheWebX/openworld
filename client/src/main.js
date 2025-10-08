@@ -608,16 +608,18 @@ function playGunshot() {
 }
 
 // Render loop
-let lastTime = performance.now()
-let frameBudget = 1000 / 60
+let lastRender = 0
+let renderInterval = 1000 / 60 // target 60 FPS, adapt down if needed
 function animate(now = performance.now()) {
   requestAnimationFrame(animate)
-  const dt = now - lastTime
-  lastTime = now
+  // simple recoil decay
   fpRecoil *= 0.85
   fpGroup.position.set(0.35, -0.35, -0.8 - fpRecoil)
-  if (dt <= frameBudget * 1.5) {
+  // adapt to slower devices (fallback to ~30 FPS)
+  if (now - lastRender > 50) renderInterval = 1000 / 30; else renderInterval = 1000 / 60
+  if (now - lastRender >= renderInterval) {
     renderer.render(scene, camera)
+    lastRender = now
   }
 }
 animate()
