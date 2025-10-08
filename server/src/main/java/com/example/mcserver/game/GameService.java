@@ -55,6 +55,8 @@ public class GameService {
     private final Map<String, NPC> npcs = new ConcurrentHashMap<>();
     private final java.util.List<Projectile> projectiles = new java.util.ArrayList<>();
     private final Map<String, Double> threatByPlayerSeconds = new ConcurrentHashMap<>();
+    public static class Shot { public String ownerKind; public String ownerId; public double sx,sy,sz, dx,dy,dz; }
+    private final java.util.List<Shot> recentShots = new java.util.ArrayList<>();
 
     public GameService() {
         seedDemo();
