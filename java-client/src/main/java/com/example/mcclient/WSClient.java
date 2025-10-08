@@ -40,6 +40,8 @@ public class WSClient extends WebSocketClient {
             String type = root.path("type").asText("");
             if ("state".equals(type)) {
                 state.updateFrom(root);
+            } else if ("hello".equals(type)) {
+                state.loadHello(root);
             } else if ("blockUpdate".equals(type)) {
                 state.applyBlockUpdate(root);
             }
