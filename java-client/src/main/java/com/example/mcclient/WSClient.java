@@ -6,8 +6,13 @@ import org.java_websocket.handshake.ServerHandshake;
 import java.net.URI;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 public class WSClient extends WebSocketClient {
     private final ConcurrentLinkedQueue<String> outgoing;
+    private final ObjectMapper mapper = new ObjectMapper();
+    public volatile State state = new State();
     public WSClient(URI serverUri, ConcurrentLinkedQueue<String> outgoing) {
         super(serverUri);
         this.outgoing = outgoing;
@@ -30,7 +35,15 @@ public class WSClient extends WebSocketClient {
 
     @Override
     public void onMessage(String message) {
-        // TODO: parse state and render
+        try {
+            JsonNode root = mapper.readTree(message);
+            String type = root.path("type").asText("");
+            if ("state".equals(type)) {
+                state.updateFrom(root);
+            } else if ("blockUpdate".equals(type)) {
+                state.applyBlockUpdate(root);
+            }
+        } catch (Exception ignored) {}
     }
 
     @Override
