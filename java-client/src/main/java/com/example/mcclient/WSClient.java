@@ -44,6 +44,10 @@ public class WSClient extends WebSocketClient {
                 state.loadHello(root);
             } else if ("blockUpdate".equals(type)) {
                 state.applyBlockUpdate(root);
+            } else if ("shot".equals(type)) {
+                state.registerShot(root);
+            } else if ("death".equals(type)) {
+                state.registerDeath(root);
             }
         } catch (Exception ignored) {}
     }

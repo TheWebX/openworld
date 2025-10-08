@@ -24,6 +24,7 @@ public class Main {
     private boolean leftMouseDown = false, rightMouseDown = false;
     private long lastClickMs = 0;
     private float muzzleFlashTimer = 0f;
+    private float deathOverlayAlpha = 0f;
     private int winWidth = 1280, winHeight = 720;
     private final Map<String, Rig> playerRigMap = new HashMap<>();
     private final Map<String, Rig> npcRigMap = new HashMap<>();
@@ -172,7 +173,7 @@ public class Main {
                     if (ws.state.myId != null && ws.state.myId.equals(p.id)) continue;
                     Rig rig = playerRigMap.computeIfAbsent(p.id, k -> new Rig());
                     float swing = rig.update((float)p.x, (float)p.z, now);
-                    drawHumanRigAnimated((float)p.x, (float)p.y, (float)p.z, 0.99f, 0.66f, 0.55f, swing);
+                    drawHumanRigAnimatedYawPitch((float)p.x, (float)p.y, (float)p.z, 0.99f, 0.66f, 0.55f, swing, (float)p.yaw, (float)p.pitch, shotIntensity(p.id));
                 }
                 // NPC rigs
                 for (var n : ws.state.npcs) {
@@ -180,7 +181,7 @@ public class Main {
                     float swing = rig.update((float)n.x, (float)n.z, now);
                     boolean police = "police".equals(n.kind);
                     float r= police?0.2f:0.6f, g= police?0.4f:0.7f, b= police?0.9f:0.5f;
-                    drawHumanRigAnimated((float)n.x, (float)n.y, (float)n.z, r,g,b, swing);
+                    drawHumanRigAnimatedYawPitch((float)n.x, (float)n.y, (float)n.z, r,g,b, swing, 0f, 0f, shotIntensity(n.id));
                 }
             }
 
@@ -189,14 +190,14 @@ public class Main {
                 drawFPHandsGun();
             }
 
-            // 2D HUD overlay (hotbar, crosshair, pause)
+            // 2D HUD overlay (hotbar, crosshair, pause, death)
             drawHUD();
 
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
 
             // send inputs ~30Hz
-            if (pointerLocked && ws != null && ws.isOpen()) {
+            if (!isDead() && pointerLocked && ws != null && ws.isOpen()) {
                 double ax = Math.sin(yaw) * moveZ + Math.cos(yaw) * moveX;
                 double az = Math.cos(yaw) * moveZ - Math.sin(yaw) * moveX;
                 String json = String.format("{\"type\":\"input\",\"input\":{\"ax\":%.3f,\"az\":%.3f,\"jump\":%s,\"sprint\":%s,\"yaw\":%.3f,\"pitch\":%.3f}}",
@@ -206,7 +207,7 @@ public class Main {
 
             // handle clicks (debounced)
             long nowMs = System.currentTimeMillis();
-            if (pointerLocked && (leftMouseDown || rightMouseDown) && nowMs - lastClickMs > 120) {
+            if (!isDead() && pointerLocked && (leftMouseDown || rightMouseDown) && nowMs - lastClickMs > 120) {
                 lastClickMs = nowMs;
                 if (selectedType == 6 && leftMouseDown) {
                     // gun mode: shoot
@@ -238,6 +239,18 @@ public class Main {
 
             // HUD crosshair and muzzle flash
             if (muzzleFlashTimer > 0f) { muzzleFlashTimer -= 0.016f; }
+            // death overlay fade
+            if (ws != null && ws.state != null && ws.state.dead) {
+                deathOverlayAlpha = Math.min(1f, deathOverlayAlpha + 0.05f);
+                pointerLocked = false;
+                GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+                // allow click to respawn
+                if (leftMouseDown) {
+                    outgoing.offer("{\"type\":\"respawn\"}");
+                    ws.state.dead = false;
+                    deathOverlayAlpha = 0f;
+                }
+            }
         }
     }
 
@@ -325,6 +338,90 @@ public class Main {
         box(0.25f,0.2f,0.25f);
         GL11.glPopMatrix();
         GL11.glPopMatrix();
+    }
+
+    // Variant that applies yaw/pitch and draws a simple gun with brief muzzle flash when shooting
+    private void drawHumanRigAnimatedYawPitch(float x, float y, float z, float r, float g, float b, float swing, float yawRad, float pitchRad, float shot) {
+        GL11.glPushMatrix();
+        GL11.glTranslatef(x, y, z);
+        GL11.glRotatef((float)Math.toDegrees(yawRad), 0,1,0);
+        // legs
+        float legW=0.11f, legH=0.8f, legD=0.11f, legOffX=legW+0.05f;
+        GL11.glColor3f(r*0.5f,g*0.5f,b*0.5f);
+        // left leg
+        GL11.glPushMatrix();
+        GL11.glTranslatef(-legOffX, legH/2f, 0);
+        GL11.glRotatef((float)Math.toDegrees(swing), 1,0,0);
+        box(legW,legH,legD);
+        GL11.glPopMatrix();
+        // right leg
+        GL11.glPushMatrix();
+        GL11.glTranslatef(legOffX, legH/2f, 0);
+        GL11.glRotatef((float)Math.toDegrees(-swing), 1,0,0);
+        box(legW,legH,legD);
+        GL11.glPopMatrix();
+        // body
+        GL11.glColor3f(r,g,b);
+        GL11.glPushMatrix();
+        GL11.glTranslatef(0, legH + 0.4f, 0);
+        box(0.25f,0.8f,0.14f);
+        GL11.glPopMatrix();
+        // arms (aiming when shot>0)
+        float armW=0.09f, armH=0.8f, armD=0.09f, armOffX=0.25f+armW;
+        GL11.glColor3f(1.0f, 0.84f, 0.7f);
+        // left arm
+        GL11.glPushMatrix();
+        GL11.glTranslatef(-armOffX, legH + armH/2f, 0);
+        float aimPitchDeg = (float)Math.toDegrees(pitchRad*0.5f);
+        if (shot > 0f) GL11.glRotatef(-aimPitchDeg, 1,0,0);
+        else GL11.glRotatef((float)Math.toDegrees(-swing*0.8f), 1,0,0);
+        box(armW,armH,armD);
+        GL11.glPopMatrix();
+        // right arm + gun
+        GL11.glPushMatrix();
+        GL11.glTranslatef(armOffX, legH + armH/2f, 0);
+        if (shot > 0f) GL11.glRotatef(aimPitchDeg, 1,0,0);
+        else GL11.glRotatef((float)Math.toDegrees(swing*0.8f), 1,0,0);
+        box(armW,armH,armD);
+        if (shot > 0f) {
+            // simple gun box at hand
+            GL11.glColor3f(0.2f,0.2f,0.2f);
+            GL11.glPushMatrix();
+            GL11.glTranslatef(0.0f, -armH/2f+0.06f, -0.12f);
+            box(0.12f,0.06f,0.25f);
+            // muzzle flash as bright quad
+            GL11.glColor4f(1f,0.95f,0.6f, shot);
+            GL11.glBegin(GL11.GL_QUADS);
+            GL11.glVertex3f(-0.05f, 0.02f, -0.24f); GL11.glVertex3f(0.05f, 0.02f, -0.24f);
+            GL11.glVertex3f(0.05f,-0.02f, -0.24f); GL11.glVertex3f(-0.05f,-0.02f, -0.24f);
+            GL11.glEnd();
+            GL11.glPopMatrix();
+        }
+        GL11.glPopMatrix();
+        // head (pitch)
+        GL11.glColor3f(1.0f, 0.84f, 0.7f);
+        GL11.glPushMatrix();
+        GL11.glTranslatef(0, legH + 0.8f + 0.1f, 0);
+        GL11.glRotatef((float)Math.toDegrees(pitchRad*0.5f), 1,0,0);
+        box(0.25f,0.2f,0.25f);
+        GL11.glPopMatrix();
+        GL11.glPopMatrix();
+    }
+
+    private boolean recentlyShot(String id) {
+        if (ws == null || ws.state == null) return false;
+        Long t = ws.state.lastShotById.get(id);
+        if (t == null) return false;
+        return (System.currentTimeMillis() - t) < 150;
+    }
+
+    private float shotIntensity(String id) {
+        if (ws == null || ws.state == null) return 0f;
+        Long t = ws.state.lastShotById.get(id);
+        if (t == null) return 0f;
+        long dt = System.currentTimeMillis() - t;
+        if (dt >= 150) return 0f;
+        return 1f - (dt / 150f);
     }
 
     private void box(float w,float h,float d){
@@ -436,7 +533,7 @@ public class Main {
     private void drawHUD() {
         begin2D();
         // crosshair (only in gun mode)
-        if (selectedType == 6 && pointerLocked) {
+        if (!isDead() && selectedType == 6 && pointerLocked) {
             float cx = winWidth*0.5f, cy = winHeight*0.5f;
             rect(cx-5, cy-1, 10, 2, 1,1,1,1);
             rect(cx-1, cy-5, 2, 10, 1,1,1,1);
@@ -452,12 +549,24 @@ public class Main {
             rect(x0 + i*(slotW+gap), y0, slotW, slotH, sel?0.27f:0.13f, sel?0.27f:0.13f, sel?0.27f:0.13f, 0.7f);
         }
         // pause hint
-        if (!pointerLocked) {
+        if (!isDead() && !pointerLocked) {
             rect(0,0,winWidth,winHeight, 0,0,0,0.3f);
             // simple center box
             float bw=260,bh=60; rect((winWidth-bw)/2f,(winHeight-bh)/2f,bw,bh,0.1f,0.1f,0.1f,0.9f);
         }
+        // death overlay
+        if (deathOverlayAlpha > 0f) {
+            rect(0,0,winWidth,winHeight, 0,0,0, 0.5f * deathOverlayAlpha);
+            // simple center box for text background
+            float bw=320,bh=100; rect((winWidth-bw)/2f,(winHeight-bh)/2f,bw,bh,0.05f,0.05f,0.05f, 0.9f * deathOverlayAlpha);
+            // simple white rectangle representing text area (no text rendering here)
+            rect((winWidth-bw)/2f+20,(winHeight-bh)/2f+bh/2f-2, bw-40, 4, 1,1,1, deathOverlayAlpha);
+        }
         end2D();
+    }
+
+    private boolean isDead() {
+        return ws != null && ws.state != null && ws.state.dead;
     }
 
     private float clamp(float v){ return Math.max(0f, Math.min(1f, v)); }

@@ -366,8 +366,20 @@ function connect() {
       if (msg.action === 'set') addBlock(msg.x, msg.y, msg.z, msg.block)
       else if (msg.action === 'remove') removeBlock(msg.x, msg.y, msg.z)
     } else if (msg.type === 'shot') {
-      lastShotById.set(msg.ownerId, performance.now())
-      showNPCGunMuzzle(msg.ownerId)
+      const now = performance.now()
+      if (msg.ownerId) {
+        lastShotById.set(msg.ownerId, now)
+      } else if (msg.ownerKind === 'npc') {
+        // infer shooter by nearest NPC to shot start
+        const sx = msg.sx, sy = msg.sy, sz = msg.sz
+        let bestId = null, bestD = Infinity
+        for (const [id, rig] of npcRigs) {
+          const p = rig.group.position
+          const d = Math.hypot(p.x - sx, p.y - sy, p.z - sz)
+          if (d < bestD) { bestD = d; bestId = id }
+        }
+        if (bestId && bestD < 2.0) lastShotById.set(bestId, now)
+      }
     } else if (msg.type === 'death') {
       if (msg.playerId === myId) {
         // pause and show overlay
@@ -395,6 +407,8 @@ function handleState(msg) {
     const yawVal = (p.yaw ?? 0)
     const pitchVal = (p.pitch ?? 0)
     rig.update(new THREE.Vector3(p.x, p.y, p.z), yawVal, pitchVal, dt)
+    const tShot = lastShotById.get(p.id)
+    if (tShot && now - tShot < 120) attachGunToRightArm(rig)
     // hide local body to avoid first-person obstruction
     rig.group.visible = p.id !== myId
     if (p.id === myId) {

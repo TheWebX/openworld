@@ -24,6 +24,8 @@ public class State {
     public final ConcurrentHashMap<String, Integer> blocks = new ConcurrentHashMap<>(); // key: "x,y,z"
     public volatile List<Player> players = List.of();
     public volatile List<NPC> npcs = List.of();
+    public final ConcurrentHashMap<String, Long> lastShotById = new ConcurrentHashMap<>();
+    public volatile boolean dead = false;
 
     public void updateFrom(JsonNode root){
         // players
@@ -85,6 +87,36 @@ public class State {
                 int t = b.path("type").asInt(1);
                 blocks.put(x+","+y+","+z, t);
             }
+        }
+    }
+
+    public void registerShot(JsonNode root) {
+        String ownerId = root.path("ownerId").asText(null);
+        if (ownerId != null) {
+            lastShotById.put(ownerId, System.currentTimeMillis());
+        } else {
+            String ownerKind = root.path("ownerKind").asText("");
+            if ("npc".equals(ownerKind)) {
+                double sx = root.path("sx").asDouble();
+                double sy = root.path("sy").asDouble();
+                double sz = root.path("sz").asDouble();
+                String best = null; double bestD = Double.POSITIVE_INFINITY;
+                for (NPC n : npcs) {
+                    double dx = n.x - sx, dy = n.y - sy, dz = n.z - sz;
+                    double d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                    if (d < bestD) { bestD = d; best = n.id; }
+                }
+                if (best != null && bestD < 2.0) {
+                    lastShotById.put(best, System.currentTimeMillis());
+                }
+            }
+        }
+    }
+
+    public void registerDeath(JsonNode root) {
+        String pid = root.path("playerId").asText(null);
+        if (pid != null && pid.equals(myId)) {
+            dead = true;
         }
     }
 }
