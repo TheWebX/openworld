@@ -26,13 +26,31 @@ public class Main {
     public void run() {
         GLFWErrorCallback.createPrint(System.err).set();
         if (!GLFW.glfwInit()) throw new IllegalStateException("Unable to init GLFW");
-        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 3);
-        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 3);
+        // Request a compatibility context that supports fixed-function (glBegin/glEnd)
+        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 2);
+        GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 1);
+        GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_ANY_PROFILE);
         window = GLFW.glfwCreateWindow(1280, 720, "MC Java Client", MemoryUtil.NULL, MemoryUtil.NULL);
         if (window == MemoryUtil.NULL) throw new RuntimeException("Failed to create window");
         GLFW.glfwMakeContextCurrent(window);
         GL.createCapabilities();
         GLFW.glfwSwapInterval(1);
+
+        int width = 1280, height = 720;
+        GLFW.glfwSetWindowSize(window, width, height);
+        GL11.glViewport(0, 0, width, height);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        // Basic perspective projection
+        float fov = 70f;
+        float aspect = (float) width / (float) height;
+        float zNear = 0.1f, zFar = 1000f;
+        float top = (float) Math.tan(Math.toRadians(fov * 0.5)) * zNear;
+        float right = top * aspect;
+        GL11.glMatrixMode(GL11.GL_PROJECTION);
+        GL11.glLoadIdentity();
+        GL11.glFrustum(-right, right, -top, top, zNear, zFar);
+        GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        GL11.glLoadIdentity();
 
         // input
         GLFW.glfwSetCursorPosCallback(window, (w, mx, my) -> {
@@ -72,6 +90,11 @@ public class Main {
         GL11.glClearColor(0.53f, 0.81f, 0.92f, 1f);
         while (!GLFW.glfwWindowShouldClose(window)) {
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+            // camera transform (very basic)
+            GL11.glLoadIdentity();
+            GL11.glRotatef((float) Math.toDegrees(pitch), 1f, 0f, 0f);
+            GL11.glRotatef((float) Math.toDegrees(yaw), 0f, 1f, 0f);
+            GL11.glTranslatef(0f, -1.6f, -5f);
             // simple ground
             GL11.glBegin(GL11.GL_QUADS);
             GL11.glColor3f(0.42f, 0.66f, 0.31f);
