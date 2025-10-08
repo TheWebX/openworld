@@ -8,16 +8,24 @@ version = '0.1.0'
 
 repositories { mavenCentral() }
 
+ext {
+    lwjglVersion = '3.3.4'
+    os = org.gradle.internal.os.OperatingSystem.current()
+    lwjglNatives = os.isWindows() ? 'natives-windows' : (os.isMacOsX() ? 'natives-macos' : 'natives-linux')
+}
+
 dependencies {
     implementation 'org.java-websocket:Java-WebSocket:1.5.6'
     implementation 'org.joml:joml:1.10.5'
-    implementation platform('org.lwjgl:lwjgl-bom:3.3.4')
-    implementation 'org.lwjgl:lwjgl'
-    implementation 'org.lwjgl:lwjgl-glfw'
-    implementation 'org.lwjgl:lwjgl-opengl'
-    runtimeOnly 'org.lwjgl:lwjgl::natives-linux'
-    runtimeOnly 'org.lwjgl:lwjgl-glfw::natives-linux'
-    runtimeOnly 'org.lwjgl:lwjgl-opengl::natives-linux'
+
+    implementation platform("org.lwjgl:lwjgl-bom:${lwjglVersion}")
+    implementation "org.lwjgl:lwjgl"
+    implementation "org.lwjgl:lwjgl-glfw"
+    implementation "org.lwjgl:lwjgl-opengl"
+
+    runtimeOnly "org.lwjgl:lwjgl::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-glfw::${lwjglNatives}"
+    runtimeOnly "org.lwjgl:lwjgl-opengl::${lwjglNatives}"
 }
 
 application {
