@@ -586,6 +586,18 @@ public class GameService {
         return new Vec3(cx + 0.5, 2.0, cz + 0.5);
     }
 
+    public void respawn(String playerId) {
+        Player p = players.get(playerId);
+        if (p == null) return;
+        p.hp = 100;
+        p.velocity = new Vec3(0, 0, 0);
+        p.onGround = true;
+        int cx = (int) Math.floor(p.position.x);
+        int cz = (int) Math.floor(p.position.z);
+        Vec3 spawn = findSafeSpawn(cx, cz, 32);
+        p.position = spawn;
+    }
+
     private void applyFlatPhysics(Player p, double dt) {
         boolean inWater = intersectsWater(p.position.x, p.position.y, p.position.z);
         double g = inWater ? 8.0 : 25.0;
