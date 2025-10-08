@@ -22,6 +22,7 @@ public class Main {
     private boolean leftMouseDown = false, rightMouseDown = false;
     private long lastClickMs = 0;
     private float muzzleFlashTimer = 0f;
+    private int winWidth = 1280, winHeight = 720;
 
     private final ConcurrentLinkedQueue<String> outgoing = new ConcurrentLinkedQueue<>();
     private WSClient ws;
@@ -35,19 +36,18 @@ public class Main {
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MAJOR, 2);
         GLFW.glfwWindowHint(GLFW.GLFW_CONTEXT_VERSION_MINOR, 1);
         GLFW.glfwWindowHint(GLFW.GLFW_OPENGL_PROFILE, GLFW.GLFW_OPENGL_ANY_PROFILE);
-        window = GLFW.glfwCreateWindow(1280, 720, "MC Java Client", MemoryUtil.NULL, MemoryUtil.NULL);
+        window = GLFW.glfwCreateWindow(winWidth, winHeight, "MC Java Client", MemoryUtil.NULL, MemoryUtil.NULL);
         if (window == MemoryUtil.NULL) throw new RuntimeException("Failed to create window");
         GLFW.glfwMakeContextCurrent(window);
         GL.createCapabilities();
         GLFW.glfwSwapInterval(1);
 
-        int width = 1280, height = 720;
-        GLFW.glfwSetWindowSize(window, width, height);
-        GL11.glViewport(0, 0, width, height);
+        GLFW.glfwSetWindowSize(window, winWidth, winHeight);
+        GL11.glViewport(0, 0, winWidth, winHeight);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
         // Basic perspective projection
         float fov = 70f;
-        float aspect = (float) width / (float) height;
+        float aspect = (float) winWidth / (float) winHeight;
         float zNear = 0.1f, zFar = 1000f;
         float top = (float) Math.tan(Math.toRadians(fov * 0.5)) * zNear;
         float right = top * aspect;
@@ -56,6 +56,17 @@ public class Main {
         GL11.glFrustum(-right, right, -top, top, zNear, zFar);
         GL11.glMatrixMode(GL11.GL_MODELVIEW);
         GL11.glLoadIdentity();
+        GLFW.glfwSetWindowSizeCallback(window, (w,newW,newH)->{
+            winWidth = newW; winHeight = newH;
+            GL11.glViewport(0,0,winWidth,winHeight);
+            GL11.glMatrixMode(GL11.GL_PROJECTION);
+            GL11.glLoadIdentity();
+            float asp = (float)winWidth/(float)winHeight;
+            float top2 = (float) Math.tan(Math.toRadians(70f * 0.5)) * 0.1f;
+            float right2 = top2 * asp;
+            GL11.glFrustum(-right2, right2, -top2, top2, 0.1f, 1000f);
+            GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        });
 
         // input
         GLFW.glfwSetCursorPosCallback(window, (w, mx, my) -> {
@@ -106,11 +117,12 @@ public class Main {
         GL11.glClearColor(0.53f, 0.81f, 0.92f, 1f);
         while (!GLFW.glfwWindowShouldClose(window)) {
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
-            // camera transform (very basic)
+            // camera transform based on local player (first-person)
             GL11.glLoadIdentity();
             GL11.glRotatef((float) Math.toDegrees(pitch), 1f, 0f, 0f);
             GL11.glRotatef((float) Math.toDegrees(yaw), 0f, 1f, 0f);
-            GL11.glTranslatef(0f, -1.6f, -5f);
+            Vector3f cam = getCameraPosition();
+            GL11.glTranslatef(-cam.x, -cam.y, -cam.z);
             // simple ground
             GL11.glBegin(GL11.GL_QUADS);
             GL11.glColor3f(0.42f, 0.66f, 0.31f);
@@ -140,11 +152,14 @@ public class Main {
                 }
             }
 
+            // 2D HUD overlay (hotbar, crosshair, pause)
+            drawHUD();
+
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
 
             // send inputs ~30Hz
-            if (ws != null && ws.isOpen()) {
+            if (pointerLocked && ws != null && ws.isOpen()) {
                 double ax = Math.sin(yaw) * moveZ + Math.cos(yaw) * moveX;
                 double az = Math.cos(yaw) * moveZ - Math.sin(yaw) * moveX;
                 String json = String.format("{\"type\":\"input\",\"input\":{\"ax\":%.3f,\"az\":%.3f,\"jump\":%s,\"sprint\":%s,\"yaw\":%.3f,\"pitch\":%.3f}}",
@@ -185,9 +200,7 @@ public class Main {
             }
 
             // HUD crosshair and muzzle flash
-            if (muzzleFlashTimer > 0f) {
-                muzzleFlashTimer -= 0.016f;
-            }
+            if (muzzleFlashTimer > 0f) { muzzleFlashTimer -= 0.016f; }
         }
     }
 
@@ -255,7 +268,7 @@ public class Main {
         if (ws != null && ws.state != null && ws.state.myId != null) {
             for (var p : ws.state.players) {
                 if (ws.state.myId.equals(p.id)) {
-                    return new Vector3f((float)p.x, (float)(p.y + 1.6), (float)p.z);
+                    return new Vector3f((float)p.x, (float)(p.y + 1.6f), (float)p.z);
                 }
             }
         }
@@ -294,5 +307,57 @@ public class Main {
             }
         }
         return null;
+    }
+
+    // 2D HUD drawing
+    private void begin2D() {
+        GL11.glMatrixMode(GL11.GL_PROJECTION);
+        GL11.glPushMatrix();
+        GL11.glLoadIdentity();
+        GL11.glOrtho(0, winWidth, 0, winHeight, -1, 1);
+        GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        GL11.glPushMatrix();
+        GL11.glLoadIdentity();
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+    }
+    private void end2D() {
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        GL11.glPopMatrix();
+        GL11.glMatrixMode(GL11.GL_PROJECTION);
+        GL11.glPopMatrix();
+        GL11.glMatrixMode(GL11.GL_MODELVIEW);
+    }
+    private void rect(float x,float y,float w,float h, float r,float g,float b,float a) {
+        GL11.glColor4f(r,g,b,a);
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glVertex2f(x,y); GL11.glVertex2f(x+w,y); GL11.glVertex2f(x+w,y+h); GL11.glVertex2f(x,y+h);
+        GL11.glEnd();
+    }
+    private void drawHUD() {
+        begin2D();
+        // crosshair (only in gun mode)
+        if (selectedType == 6 && pointerLocked) {
+            float cx = winWidth*0.5f, cy = winHeight*0.5f;
+            rect(cx-5, cy-1, 10, 2, 1,1,1,1);
+            rect(cx-1, cy-5, 2, 10, 1,1,1,1);
+        }
+        // hotbar
+        float slotW = 44, slotH = 44, gap = 8;
+        int slots = 6;
+        float totalW = slots*slotW + (slots-1)*gap;
+        float x0 = (winWidth-totalW)/2f, y0 = 24;
+        for (int i=0;i<slots;i++) {
+            int idx = i+1;
+            boolean sel = (selectedType == idx);
+            rect(x0 + i*(slotW+gap), y0, slotW, slotH, sel?0.27f:0.13f, sel?0.27f:0.13f, sel?0.27f:0.13f, 0.7f);
+        }
+        // pause hint
+        if (!pointerLocked) {
+            rect(0,0,winWidth,winHeight, 0,0,0,0.3f);
+            // simple center box
+            float bw=260,bh=60; rect((winWidth-bw)/2f,(winHeight-bh)/2f,bw,bh,0.1f,0.1f,0.1f,0.9f);
+        }
+        end2D();
     }
 }
