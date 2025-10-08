@@ -118,6 +118,20 @@ const raycaster = new THREE.Raycaster()
 raycaster.far = 80
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 const npcRigs = new Map() // id -> rig
+const lastShotById = new Map() // id -> timestamp ms
+
+// Death overlay
+const deathOverlay = document.createElement('div')
+deathOverlay.style.position = 'absolute'
+deathOverlay.style.inset = '0'
+deathOverlay.style.display = 'none'
+deathOverlay.style.background = 'rgba(0,0,0,0.5)'
+deathOverlay.style.color = 'white'
+deathOverlay.style.fontFamily = 'system-ui, sans-serif'
+deathOverlay.style.display = 'grid'
+deathOverlay.style.placeItems = 'center'
+deathOverlay.innerHTML = '<div style="text-align:center"><div style="font-size:28px;font-weight:700">You Died</div><div style="margin-top:8px;font-size:14px;opacity:0.8">Click to respawn</div></div>'
+document.body.appendChild(deathOverlay)
 
 function blockKey(x, y, z) { return `${x},${y},${z}` }
 
@@ -351,6 +365,15 @@ function connect() {
     } else if (msg.type === 'blockUpdate') {
       if (msg.action === 'set') addBlock(msg.x, msg.y, msg.z, msg.block)
       else if (msg.action === 'remove') removeBlock(msg.x, msg.y, msg.z)
+    } else if (msg.type === 'shot') {
+      lastShotById.set(msg.ownerId, performance.now())
+      showNPCGunMuzzle(msg.ownerId)
+    } else if (msg.type === 'death') {
+      if (msg.playerId === myId) {
+        // pause and show overlay
+        document.exitPointerLock?.()
+        deathOverlay.style.display = 'grid'
+      }
     }
   })
   socket.addEventListener('close', () => {
@@ -391,6 +414,9 @@ function handleState(msg) {
       const dt2 = Math.min(0.05, (now2 - rig._lastTime) / 1000)
       rig._lastTime = now2
       rig.update(new THREE.Vector3(n.x, n.y, n.z), rig.group.rotation.y, 0, dt2)
+      // show gun if recently shot
+      const t = lastShotById.get(n.id)
+      if (t && now2 - t < 120) attachGunToRightArm(rig)
       seen.add(n.id)
     }
     // remove stale
@@ -477,11 +503,35 @@ window.addEventListener('mousedown', (e) => {
   }
 })
 
+// Respawn on death overlay click
+deathOverlay.addEventListener('click', () => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return
+  socket.send(JSON.stringify({ type: 'respawn' }))
+  deathOverlay.style.display = 'none'
+})
+
 function muzzleFlash() {
   const flare = new THREE.PointLight(0xffeeaa, 2, 4)
   flare.position.copy(camera.position)
   scene.add(flare)
   setTimeout(() => scene.remove(flare), 60)
+}
+
+function attachGunToRightArm(rig) {
+  if (!rig || !rig.parts || !rig.parts.rightArm) return
+  if (!rig.parts._gun) {
+    const gunGeom = new THREE.BoxGeometry(0.12, 0.06, 0.25)
+    const gunMat = new THREE.MeshLambertMaterial({ color: 0x333333 })
+    const gun = new THREE.Mesh(gunGeom, gunMat)
+    gun.position.set(0.1, -0.2, -0.1)
+    rig.parts.rightArm.add(gun)
+    rig.parts._gun = gun
+  }
+  // muzzle flash near gun tip
+  const light = new THREE.PointLight(0xffeeaa, 1.5, 2)
+  light.position.set(0.1, -0.2, -0.22)
+  rig.parts.rightArm.add(light)
+  setTimeout(() => rig.parts.rightArm.remove(light), 60)
 }
 
 function setSelectedType(type) {
