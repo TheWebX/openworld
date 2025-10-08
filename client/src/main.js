@@ -110,8 +110,11 @@ scene.add(ground)
 // Player rigs and blocks
 const playerRigs = new Map()
 let myId = null
-const blockMeshes = new Map() // key: "x,y,z" -> mesh
+// All blocks known from server (lazy-load meshes near camera only)
+const allBlocks = new Map() // key -> type
+const blockMeshes = new Map() // key -> mesh (only nearby)
 const blockMaterials = new Map() // type -> material
+const VISIBLE_RADIUS = 64
 let selectedType = 1
 let selectedKind = 'block'
 const raycaster = new THREE.Raycaster()
@@ -134,6 +137,16 @@ deathOverlay.innerHTML = '<div style="text-align:center"><div style="font-size:2
 document.body.appendChild(deathOverlay)
 
 function blockKey(x, y, z) { return `${x},${y},${z}` }
+function dist2xz(ax, az, bx, bz) { const dx = ax - bx, dz = az - bz; return dx*dx + dz*dz }
+function isWithinRadius(x, z) {
+  const cx = camera.position.x || 0, cz = camera.position.z || 0
+  return dist2xz(x + 0.5, z + 0.5, cx, cz) <= VISIBLE_RADIUS * VISIBLE_RADIUS
+}
+function dist2xz(ax, az, bx, bz) { const dx = ax - bx, dz = az - bz; return dx*dx + dz*dz }
+function isWithinRadius(x, z) {
+  const cx = camera.position.x || 0, cz = camera.position.z || 0
+  return dist2xz(x + 0.5, z + 0.5, cx, cz) <= VISIBLE_RADIUS * VISIBLE_RADIUS
+}
 
 function createHumanRig(palette) {
   const group = new THREE.Group()
@@ -261,13 +274,17 @@ function createBlockMesh(x, y, z, type = 1) {
 
 function addBlock(x, y, z, type = 1) {
   const key = blockKey(x, y, z)
+  allBlocks.set(key, type)
   if (blockMeshes.has(key)) return
-  const mesh = createBlockMesh(x, y, z, type)
-  blockMeshes.set(key, mesh)
+  if (isWithinRadius(x, z)) {
+    const mesh = createBlockMesh(x, y, z, type)
+    blockMeshes.set(key, mesh)
+  }
 }
 
 function removeBlock(x, y, z) {
   const key = blockKey(x, y, z)
+  allBlocks.delete(key)
   const mesh = blockMeshes.get(key)
   if (!mesh) return
   scene.remove(mesh)
@@ -362,6 +379,7 @@ function connect() {
       if (Array.isArray(msg.blocks)) {
         for (const b of msg.blocks) addBlock(b.x, b.y, b.z, b.type)
       }
+      updateVisibleBlocks(true)
     } else if (msg.type === 'state') {
       handleState(msg)
     } else if (msg.type === 'blockUpdate') {
@@ -617,6 +635,8 @@ function animate(now = performance.now()) {
   fpGroup.position.set(0.35, -0.35, -0.8 - fpRecoil)
   // adapt to slower devices (fallback to ~30 FPS)
   if (now - lastRender > 50) renderInterval = 1000 / 30; else renderInterval = 1000 / 60
+  // update visible block meshes near camera
+  updateVisibleBlocks()
   if (now - lastRender >= renderInterval) {
     renderer.render(scene, camera)
     lastRender = now
