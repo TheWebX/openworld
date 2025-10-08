@@ -58,5 +58,6 @@ public class GameLoop {
         payload.put("players", players);
         payload.put("npcs", npcs);
         ws.broadcast(payload);
+        ws.broadcastEphemeral(gameService);
     }
 }

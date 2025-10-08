@@ -120,6 +120,29 @@ public class GameWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    // Broadcast recent shots and deaths to all clients (to sync gun visuals and death overlay)
+    public void broadcastEphemeral(GameService gameService) {
+        var shots = gameService.drainShots();
+        if (!shots.isEmpty()) {
+            for (var sh : shots) {
+                var node = objectMapper.createObjectNode()
+                        .put("type", "shot")
+                        .put("ownerKind", sh.ownerKind)
+                        .put("ownerId", sh.ownerId)
+                        .put("sx", sh.sx).put("sy", sh.sy).put("sz", sh.sz)
+                        .put("dx", sh.dx).put("dy", sh.dy).put("dz", sh.dz);
+                broadcast(node);
+            }
+        }
+        var deaths = gameService.drainDeaths();
+        if (!deaths.isEmpty()) {
+            for (var id : deaths) {
+                var node = objectMapper.createObjectNode().put("type","death").put("playerId", id);
+                broadcast(node);
+            }
+        }
+    }
+
     private void send(WebSocketSession s, JsonNode node) throws IOException {
         Object lock = sessionLocks.getOrDefault(s.getId(), this);
         String text = objectMapper.writeValueAsString(node);

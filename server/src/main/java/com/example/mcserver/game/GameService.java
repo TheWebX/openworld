@@ -57,6 +57,7 @@ public class GameService {
     private final Map<String, Double> threatByPlayerSeconds = new ConcurrentHashMap<>();
     public static class Shot { public String ownerKind; public String ownerId; public double sx,sy,sz, dx,dy,dz; }
     private final java.util.List<Shot> recentShots = new java.util.ArrayList<>();
+    private final java.util.List<String> recentDeaths = new java.util.ArrayList<>();
 
     public GameService() {
         seedDemo();
@@ -257,9 +258,9 @@ public class GameService {
             pr.position.x += pr.velocity.x * dt;
             pr.position.y += pr.velocity.y * dt;
             pr.position.z += pr.velocity.z * dt;
-            // hit NPCs
+            // hit NPCs (AABB)
             for (NPC n : npcs.values()) {
-                if (distance2(pr.position, n.position) < 0.6*0.6) {
+                if (pointInAABB(pr.position, n.position.x, n.position.y, n.position.z, PLAYER_HALF, PLAYER_HEIGHT, PLAYER_HALF)) {
                     n.hp -= 25;
                     if ("villager".equals(n.kind) && pr.ownerPlayerId != null) {
                         // mark threat for owner
@@ -272,10 +273,11 @@ public class GameService {
                     break;
                 }
             }
-            // hit players
+            // hit players (AABB)
             for (Player pl : players.values()) {
-                if (distance2(pr.position, pl.position) < 0.6*0.6) {
+                if (pointInAABB(pr.position, pl.position.x, pl.position.y, pl.position.z, PLAYER_HALF, PLAYER_HEIGHT, PLAYER_HALF)) {
                     pl.hp -= 25;
+                    if (pl.hp <= 0) { recentDeaths.add(pl.id); }
                     it.remove();
                     break;
                 }
@@ -295,6 +297,12 @@ public class GameService {
         return dx*dx + dy*dy + dz*dz;
     }
 
+    private boolean pointInAABB(Vec3 p, double cx, double cy, double cz, double halfW, double height, double halfD) {
+        return p.x >= cx - halfW && p.x <= cx + halfW &&
+               p.y >= cy && p.y <= cy + height &&
+               p.z >= cz - halfD && p.z <= cz + halfD;
+    }
+
     public void handleShoot(String playerId, double dx, double dy, double dz) {
         Player p = players.get(playerId);
         if (p == null) return;
@@ -304,6 +312,7 @@ public class GameService {
         Vec3 start = new Vec3(p.position.x, p.position.y + 1.4, p.position.z);
         Vec3 vel = new Vec3(dx * 40, dy * 40, dz * 40);
         projectiles.add(new Projectile(playerId, start, vel, 2.0));
+        Shot sh = new Shot(); sh.ownerKind="player"; sh.ownerId=playerId; sh.sx=start.x; sh.sy=start.y; sh.sz=start.z; sh.dx=dx; sh.dy=dy; sh.dz=dz; recentShots.add(sh);
     }
 
     private void shootAt(double sx, double sy, double sz, double tx, double ty, double tz, double speed) {
@@ -371,6 +380,18 @@ public class GameService {
 
     public Map<String, Integer> getBlocks() {
         return blocks;
+    }
+
+    public java.util.List<Shot> drainShots() {
+        java.util.List<Shot> out = new java.util.ArrayList<>(recentShots);
+        recentShots.clear();
+        return out;
+    }
+
+    public java.util.List<String> drainDeaths() {
+        java.util.List<String> out = new java.util.ArrayList<>(recentDeaths);
+        recentDeaths.clear();
+        return out;
     }
 
     public boolean setBlock(int x, int y, int z, int type) {
