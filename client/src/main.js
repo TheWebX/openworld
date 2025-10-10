@@ -32,7 +32,8 @@ document.body.appendChild(crosshair)
 
 // Three.js setup
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
-const targetDPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 1.25))
+let currentDPR = Math.min(window.devicePixelRatio || 1, 1.25)
+const targetDPR = currentDPR
 renderer.setPixelRatio(targetDPR)
 renderer.setSize(window.innerWidth, window.innerHeight)
 app.appendChild(renderer.domElement)
@@ -118,7 +119,7 @@ const VISIBLE_RADIUS = 48
 let selectedType = 1
 let selectedKind = 'block'
 const raycaster = new THREE.Raycaster()
-raycaster.far = 80
+raycaster.far = 48
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 const npcRigs = new Map() // id -> rig
 const lastShotById = new Map() // id -> timestamp ms
@@ -216,6 +217,7 @@ function getOrCreateNPCRig(id, kind) {
   return rig
 }
 
+const FAST_MODE = true
 function getBlockMaterial(type) {
   if (blockMaterials.has(type)) return blockMaterials.get(type)
   const size = 16
@@ -250,7 +252,9 @@ function getBlockMaterial(type) {
   tex.minFilter = THREE.NearestFilter
   const transparent = (type === 6 || type === 8)
   const opacity = (type === 6) ? 0.6 : (type === 8 ? 0.35 : 1.0)
-  const mat = new THREE.MeshLambertMaterial({ map: tex, transparent, opacity })
+  const mat = FAST_MODE
+    ? new THREE.MeshBasicMaterial({ map: tex, transparent, opacity })
+    : new THREE.MeshLambertMaterial({ map: tex, transparent, opacity })
   blockMaterials.set(type, mat)
   return mat
 }
@@ -653,21 +657,33 @@ function playGunshot() {
   o.stop(ctx.currentTime + 0.16)
 }
 
-// Render loop
-let lastRender = 0
-let renderInterval = 1000 / 60 // target 60 FPS, adapt down if needed
+// Render loop with dynamic resolution scaling (DRS)
+let lastTime = performance.now()
+let emaFrame = 16.7 // ms, exponential moving average
+let lastDprAdjust = 0
 function animate(now = performance.now()) {
   requestAnimationFrame(animate)
-  // simple recoil decay
+  const dt = now - lastTime
+  lastTime = now
+  // recoil decay
   fpRecoil *= 0.85
   fpGroup.position.set(0.35, -0.35, -0.8 - fpRecoil)
-  // adapt to slower devices (fallback to ~30 FPS)
-  if (now - lastRender > 200) renderInterval = 1000 / 30; else renderInterval = 1000 / 60
-  // update visible block meshes near camera
+  // update visible blocks (throttled inside)
   updateVisibleBlocks()
-  if (now - lastRender >= renderInterval) {
-    renderer.render(scene, camera)
-    lastRender = now
+  // DRS: adjust pixel ratio gradually to target smoothness (~16-20ms)
+  emaFrame = emaFrame * 0.9 + dt * 0.1
+  if (now - lastDprAdjust > 500) {
+    lastDprAdjust = now
+    if (emaFrame > 22 && currentDPR > 0.6) {
+      currentDPR = Math.max(0.6, currentDPR - 0.1)
+      renderer.setPixelRatio(currentDPR)
+      renderer.setSize(window.innerWidth, window.innerHeight, false)
+    } else if (emaFrame < 14 && currentDPR < Math.min(window.devicePixelRatio || 1, 1.25)) {
+      currentDPR = Math.min(Math.min(window.devicePixelRatio || 1, 1.25), currentDPR + 0.05)
+      renderer.setPixelRatio(currentDPR)
+      renderer.setSize(window.innerWidth, window.innerHeight, false)
+    }
   }
+  renderer.render(scene, camera)
 }
 animate()
