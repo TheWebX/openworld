@@ -32,7 +32,7 @@ document.body.appendChild(crosshair)
 
 // Three.js setup
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
-const targetDPR = Math.min(window.devicePixelRatio || 1, 1.25)
+const targetDPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 1.25))
 renderer.setPixelRatio(targetDPR)
 renderer.setSize(window.innerWidth, window.innerHeight)
 app.appendChild(renderer.domElement)
@@ -287,6 +287,37 @@ function removeBlock(x, y, z) {
   if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose())
   else mesh.material.dispose()
   blockMeshes.delete(key)
+}
+
+// Visibility management for lazy block meshes
+let lastVisUpdate = 0
+let lastVisX = Infinity, lastVisZ = Infinity
+function updateVisibleBlocks(force = false) {
+  const now = performance.now()
+  const cx = camera.position.x || 0, cz = camera.position.z || 0
+  const moved = Math.hypot((cx - lastVisX), (cz - lastVisZ)) > 2
+  if (!force && !moved && (now - lastVisUpdate) < 200) return
+  lastVisUpdate = now; lastVisX = cx; lastVisZ = cz
+  // unload far meshes
+  for (const [key, mesh] of blockMeshes) {
+    const [sx, , sz] = key.split(',').map(Number)
+    if (!isWithinRadius(sx, sz)) {
+      scene.remove(mesh)
+      mesh.geometry.dispose()
+      if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose())
+      else mesh.material.dispose()
+      blockMeshes.delete(key)
+    }
+  }
+  // load nearby meshes
+  for (const [key, type] of allBlocks) {
+    if (blockMeshes.has(key)) continue
+    const [sx, sy, sz] = key.split(',').map(Number)
+    if (isWithinRadius(sx, sz)) {
+      const mesh = createBlockMesh(sx, sy, sz, type)
+      blockMeshes.set(key, mesh)
+    }
+  }
 }
 
 // Input handling (pointer lock + WASD)
