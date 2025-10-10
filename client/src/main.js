@@ -116,6 +116,10 @@ const allBlocks = new Map() // key -> type
 const blockMeshes = new Map() // key -> mesh (only nearby)
 const blockMaterials = new Map() // type -> material
 const VISIBLE_RADIUS = 48
+// Instanced rendering state
+const instancedByType = new Map() // type -> InstancedMesh
+const instanceKeysByType = new Map() // type -> [key]
+const tmpMatrix = new THREE.Matrix4()
 let selectedType = 1
 let selectedKind = 'block'
 const raycaster = new THREE.Raycaster()
@@ -304,25 +308,47 @@ function updateVisibleBlocks(force = false) {
   const moved = Math.hypot((cx - lastVisX), (cz - lastVisZ)) > 2
   if (!force && !moved && (now - lastVisUpdate) < 200) return
   lastVisUpdate = now; lastVisX = cx; lastVisZ = cz
-  // unload far meshes
-  for (const [key, mesh] of blockMeshes) {
-    const [sx, , sz] = key.split(',').map(Number)
-    if (!isWithinRadius(sx, sz)) {
+  // gather visible keys by type
+  const typeToList = new Map()
+  for (const [key, type] of allBlocks) {
+    const [sx, sy, sz] = key.split(',').map(Number)
+    if (!isWithinRadius(sx, sz)) continue
+    let arr = typeToList.get(type)
+    if (!arr) { arr = []; typeToList.set(type, arr) }
+    arr.push([sx, sy, sz, key])
+  }
+  // remove types no longer visible
+  for (const [type, mesh] of instancedByType) {
+    if (!typeToList.has(type)) {
       scene.remove(mesh)
-      mesh.geometry.dispose()
-      if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose())
-      else mesh.material.dispose()
-      blockMeshes.delete(key)
+      instancedByType.delete(type)
+      instanceKeysByType.delete(type)
     }
   }
-  // load nearby meshes
-  for (const [key, type] of allBlocks) {
-    if (blockMeshes.has(key)) continue
-    const [sx, sy, sz] = key.split(',').map(Number)
-    if (isWithinRadius(sx, sz)) {
-      const mesh = createBlockMesh(sx, sy, sz, type)
-      blockMeshes.set(key, mesh)
+  // create/update meshes per type
+  for (const [type, list] of typeToList) {
+    const count = list.length
+    const mat = getBlockMaterial(type)
+    let mesh = instancedByType.get(type)
+    if (!mesh || mesh.count !== count) {
+      if (mesh) scene.remove(mesh)
+      window.__unitBoxGeom = window.__unitBoxGeom || new THREE.BoxGeometry(1, 1, 1)
+      mesh = new THREE.InstancedMesh(window.__unitBoxGeom, mat, count)
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+      mesh.userData.type = type
+      if (type === 6 || type === 8) { mesh.material.transparent = true; mesh.material.depthWrite = false }
+      instancedByType.set(type, mesh)
+      scene.add(mesh)
     }
+    const keysArray = []
+    for (let i = 0; i < count; i++) {
+      const [x, y, z, key] = list[i]
+      tmpMatrix.makeTranslation(x + 0.5, y + 0.5, z + 0.5)
+      mesh.setMatrixAt(i, tmpMatrix)
+      keysArray.push(key)
+    }
+    mesh.instanceMatrix.needsUpdate = true
+    instanceKeysByType.set(type, keysArray)
   }
 }
 
