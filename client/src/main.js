@@ -114,7 +114,7 @@ let myId = null
 const allBlocks = new Map() // key -> type
 const blockMeshes = new Map() // key -> mesh (only nearby)
 const blockMaterials = new Map() // type -> material
-const VISIBLE_RADIUS = 64
+const VISIBLE_RADIUS = 48
 let selectedType = 1
 let selectedKind = 'block'
 const raycaster = new THREE.Raycaster()
@@ -256,7 +256,9 @@ function getBlockMaterial(type) {
 }
 
 function createBlockMesh(x, y, z, type = 1) {
-  const geom = new THREE.BoxGeometry(1, 1, 1)
+  // reuse shared box geometry to reduce allocations
+  window.__unitBoxGeom = window.__unitBoxGeom || new THREE.BoxGeometry(1, 1, 1)
+  const geom = window.__unitBoxGeom
   const mat = getBlockMaterial(type)
   const mesh = new THREE.Mesh(geom, mat)
   mesh.position.set(x + 0.5, y + 0.5, z + 0.5)
