@@ -737,6 +737,14 @@ window.addEventListener('keydown', (e) => {
     fpGroup.visible = !thirdPerson && selectedKind === 'gun'
   } else if (e.code === 'KeyG') {
     setGraphicsMode(!HIGH_GRAPHICS)
+  } else if (thirdPerson && (e.code === 'KeyR' || e.code === 'KeyF' || e.code === 'BracketRight' || e.code === 'BracketLeft')) {
+    // Third-person camera vertical (R/F) and distance ([/]) adjustments
+    const yStep = 0.3
+    const zStep = 0.3
+    if (e.code === 'KeyR') thirdOffset.y = Math.min(6.0, thirdOffset.y + yStep)
+    if (e.code === 'KeyF') thirdOffset.y = Math.max(0.2, thirdOffset.y - yStep)
+    if (e.code === 'BracketRight') thirdOffset.z = Math.min(8.0, thirdOffset.z + zStep)
+    if (e.code === 'BracketLeft') thirdOffset.z = Math.max(1.2, thirdOffset.z - zStep)
   }
 })
 
