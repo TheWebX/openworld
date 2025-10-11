@@ -424,7 +424,7 @@ public class GameService {
             }
         }
 
-        // Lakes: place 2-3 ellipses filled with water at y=1
+        // Lakes: place 2-3 ellipses filled with water at y=0 (lowered 1 block)
         int lakeCount = 3;
         for (int i = 0; i < lakeCount; i++) {
             int cx = rng.nextInt(max - min + 1) + min;
@@ -481,7 +481,7 @@ public class GameService {
                 double nz = (z - cz) / (double) rz;
                 if (nx * nx + nz * nz <= 1.0) {
                     if (x % 16 != 0 && z % 16 != 0) { // avoid roads
-                        setBlock(x, 1, z, TYPE_WATER);
+                        setBlock(x, 0, z, TYPE_WATER);
                     }
                 }
             }

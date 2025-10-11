@@ -43,6 +43,8 @@ scene.background = new THREE.Color('#87ceeb')
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000)
 scene.add(camera)
+let thirdPerson = false
+const thirdOffset = new THREE.Vector3(0, 2.2, 3.5)
 // First-person hands + gun group (attached to camera)
 const fpGroup = new THREE.Group()
 fpGroup.position.set(0.35, -0.35, -0.8)
@@ -487,11 +489,21 @@ function handleState(msg) {
     rig.update(new THREE.Vector3(p.x, p.y, p.z), yawVal, pitchVal, dt)
     const tShot = lastShotById.get(p.id)
     if (tShot && now - tShot < 120) attachGunToRightArm(rig)
-    // hide local body to avoid first-person obstruction
-    rig.group.visible = p.id !== myId
+    // show local body in third-person only
+    rig.group.visible = !(p.id === myId && !thirdPerson)
     if (p.id === myId) {
       const eyeHeight = 1.6
-      camera.position.set(p.x, Math.max(p.y + eyeHeight, 0.2), p.z)
+      if (!thirdPerson) {
+        camera.position.set(p.x, Math.max(p.y + eyeHeight, 0.2), p.z)
+      } else {
+        // third-person: place camera behind and above
+        const back = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw))
+        const camPos = new THREE.Vector3(p.x, Math.max(p.y + eyeHeight, 0.2), p.z)
+        camPos.addScaledVector(back.negate(), thirdOffset.z)
+        camPos.y += thirdOffset.y
+        camera.position.copy(camPos)
+        camera.lookAt(p.x, p.y + eyeHeight * 0.9, p.z)
+      }
       camera.rotation.set(pitch, yaw, 0, 'YXZ')
     }
   }
@@ -505,7 +517,9 @@ function handleState(msg) {
       rig._lastTime = rig._lastTime ?? now2
       const dt2 = Math.min(0.05, (now2 - rig._lastTime) / 1000)
       rig._lastTime = now2
-      rig.update(new THREE.Vector3(n.x, n.y, n.z), rig.group.rotation.y, 0, dt2)
+      // make NPCs face their movement/camera direction more strongly
+      const dirYaw = Math.atan2(-(n.x - (rig.lastPos?.x ?? n.x)), -(n.z - (rig.lastPos?.z ?? n.z))) || rig.group.rotation.y
+      rig.update(new THREE.Vector3(n.x, n.y, n.z), dirYaw, 0, dt2)
       // show gun if recently shot
       const t = lastShotById.get(n.id)
       if (t && now2 - t < 120) attachGunToRightArm(rig)
@@ -653,6 +667,14 @@ window.addEventListener('wheel', (e) => {
   if (selectedKind==='block') {
     if (e.deltaY > 0) setSelectedType(((selectedType - 1 + 1) % 5) + 1)
     else if (e.deltaY < 0) setSelectedType(((selectedType - 1 - 1 + 5) % 5) + 1)
+  }
+})
+
+// Toggle first/third person
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyV') {
+    thirdPerson = !thirdPerson
+    fpGroup.visible = !thirdPerson && selectedKind === 'gun'
   }
 })
 
