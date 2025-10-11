@@ -483,13 +483,19 @@ public class GameService {
         for (int i = 0; i < 10; i++) {
             String id = "npc_v_" + i;
             NPC n = new NPC(id, "villager");
-            n.position = new Vec3(rng.nextInt(max - min + 1) + min + 0.5, getSurfaceY(0, 0), rng.nextInt(max - min + 1) + min + 0.5);
+            double px = rng.nextInt(max - min + 1) + min + 0.5;
+            double pz = rng.nextInt(max - min + 1) + min + 0.5;
+            int gy = Math.max(0, getSurfaceY((int)Math.floor(px), (int)Math.floor(pz)));
+            n.position = new Vec3(px, gy, pz);
             npcs.put(id, n);
         }
         for (int i = 0; i < 5; i++) {
             String id = "npc_p_" + i;
             NPC n = new NPC(id, "police");
-            n.position = new Vec3(rng.nextInt(max - min + 1) + min + 0.5, getSurfaceY(0, 0), rng.nextInt(max - min + 1) + min + 0.5);
+            double px = rng.nextInt(max - min + 1) + min + 0.5;
+            double pz = rng.nextInt(max - min + 1) + min + 0.5;
+            int gy = Math.max(0, getSurfaceY((int)Math.floor(px), (int)Math.floor(pz)));
+            n.position = new Vec3(px, gy, pz);
             npcs.put(id, n);
         }
     }

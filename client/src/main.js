@@ -516,6 +516,17 @@ function connect() {
       if (msg.ownerId) {
         lastShotById.set(msg.ownerId, now)
       } else if (msg.ownerKind === 'npc') {
+      // reinforce police muzzle flashes
+      if (msg.ownerId === 'police') {
+        // find nearest police rig and attach gun + flash
+        let best = null, bestD = Infinity
+        for (const [id, rig] of npcRigs) {
+          const pos = rig.group.position
+          const d = Math.hypot(pos.x - msg.sx, pos.y - msg.sy, pos.z - msg.sz)
+          if (d < bestD) { bestD = d; best = rig }
+        }
+        if (best) attachGunToRightArm(best)
+      }
         // infer shooter by nearest NPC to shot start
         const sx = msg.sx, sy = msg.sy, sz = msg.sz
         let bestId = null, bestD = Infinity
