@@ -122,6 +122,8 @@ const VISIBLE_RADIUS = 72
 const instancedByType = new Map() // type -> InstancedMesh
 const instanceKeysByType = new Map() // type -> [key]
 const tmpMatrix = new THREE.Matrix4()
+const frustum = new THREE.Frustum()
+const projScreenMatrix = new THREE.Matrix4()
 let selectedType = 1
 let selectedKind = 'block'
 const raycaster = new THREE.Raycaster()
@@ -353,19 +355,35 @@ function updateVisibleBlocks(force = false) {
       mesh = new THREE.InstancedMesh(window.__unitBoxGeom, mat, count)
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
       mesh.userData.type = type
-      if (type === 6 || type === 8) { mesh.material.transparent = true; mesh.material.depthWrite = false }
+      if (type === 6 || type === 8) {
+        mesh.material.transparent = true; mesh.material.depthWrite = false; mesh.renderOrder = 10
+      } else {
+        mesh.renderOrder = 0
+      }
       instancedByType.set(type, mesh)
       scene.add(mesh)
     }
     const keysArray = []
+    let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity
     for (let i = 0; i < count; i++) {
       const [x, y, z, key] = list[i]
       tmpMatrix.makeTranslation(x + 0.5, y + 0.5, z + 0.5)
       mesh.setMatrixAt(i, tmpMatrix)
       keysArray.push(key)
+      if (x<minX) minX=x; if (y<minY) minY=y; if (z<minZ) minZ=z
+      if (x>maxX) maxX=x; if (y>maxY) maxY=y; if (z>maxZ) maxZ=z
     }
     mesh.instanceMatrix.needsUpdate = true
     instanceKeysByType.set(type, keysArray)
+    // approximate bounds for frustum culling
+    const cx = (minX + maxX) * 0.5 + 0.5
+    const cy = (minY + maxY) * 0.5 + 0.5
+    const cz = (minZ + maxZ) * 0.5 + 0.5
+    const dx = (maxX - minX + 1) * 0.5
+    const dy = (maxY - minY + 1) * 0.5
+    const dz = (maxZ - minZ + 1) * 0.5
+    const radius = Math.sqrt(dx*dx + dy*dy + dz*dz)
+    mesh.userData.sphere = new THREE.Sphere(new THREE.Vector3(cx, cy, cz), radius)
   }
 }
 
@@ -735,6 +753,14 @@ function animate(now = performance.now()) {
   fpGroup.position.set(0.35, -0.35, -0.8 - fpRecoil)
   // update visible blocks (throttled inside)
   updateVisibleBlocks()
+  // frustum culling for instanced groups
+  camera.updateMatrixWorld()
+  projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+  frustum.setFromProjectionMatrix(projScreenMatrix)
+  for (const mesh of instancedByType.values()) {
+    const sph = mesh.userData.sphere
+    mesh.visible = !sph || frustum.intersectsSphere(sph)
+  }
   // DRS: adjust pixel ratio gradually to target smoothness (~16-20ms)
   emaFrame = emaFrame * 0.9 + dt * 0.1
   if (now - lastDprAdjust > 500) {
