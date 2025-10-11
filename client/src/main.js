@@ -426,6 +426,21 @@ document.addEventListener('pointerlockchange', () => {
   if (hotbar) hotbar.style.opacity = pointerLocked ? '1' : '0.5'
 })
 
+// UI buttons in overlay
+const btnView = document.getElementById('btnView')
+const btnGraphics = document.getElementById('btnGraphics')
+if (btnView) btnView.onclick = (e) => {
+  e.stopPropagation()
+  thirdPerson = !thirdPerson
+  fpGroup.visible = !thirdPerson && selectedKind === 'gun'
+  btnView.textContent = `View: ${thirdPerson ? 'Third' : 'First'}`
+}
+if (btnGraphics) btnGraphics.onclick = (e) => {
+  e.stopPropagation()
+  setGraphicsMode(!HIGH_GRAPHICS)
+  btnGraphics.textContent = `Graphics: ${HIGH_GRAPHICS ? 'High' : 'Low'}`
+}
+
 document.addEventListener('mousemove', (e) => {
   if (!pointerLocked) return
   const sensitivity = 0.002
@@ -529,12 +544,12 @@ function handleState(msg) {
       if (!thirdPerson) {
         camera.position.set(p.x, Math.max(p.y + eyeHeight, 0.2), p.z)
       } else {
-        // third-person: place camera behind and above
+        // third-person: smooth follow with damping
         const back = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw))
-        const camPos = new THREE.Vector3(p.x, Math.max(p.y + eyeHeight, 0.2), p.z)
-        camPos.addScaledVector(back.negate(), thirdOffset.z)
-        camPos.y += thirdOffset.y
-        camera.position.copy(camPos)
+        const target = new THREE.Vector3(p.x, Math.max(p.y + eyeHeight, 0.2), p.z)
+        target.addScaledVector(back.negate(), thirdOffset.z)
+        target.y += thirdOffset.y
+        camera.position.lerp(target, 0.18)
         camera.lookAt(p.x, p.y + eyeHeight * 0.9, p.z)
       }
       camera.rotation.set(pitch, yaw, 0, 'YXZ')
