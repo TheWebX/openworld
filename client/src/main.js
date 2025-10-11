@@ -223,7 +223,8 @@ function getOrCreateNPCRig(id, kind) {
   return rig
 }
 
-const FAST_MODE = true
+let FAST_MODE = true
+let HIGH_GRAPHICS = false
 function getBlockMaterial(type) {
   if (blockMaterials.has(type)) return blockMaterials.get(type)
   const size = 16
@@ -263,6 +264,20 @@ function getBlockMaterial(type) {
     : new THREE.MeshLambertMaterial({ map: tex, transparent, opacity })
   blockMaterials.set(type, mat)
   return mat
+}
+
+function setGraphicsMode(high) {
+  HIGH_GRAPHICS = !!high
+  FAST_MODE = !HIGH_GRAPHICS
+  // adjust lighting slightly for high graphics
+  ambient.intensity = HIGH_GRAPHICS ? 0.55 : 0.4
+  sun.intensity = HIGH_GRAPHICS ? 0.8 : 0.55
+  // rebuild materials and instanced meshes
+  for (const [type, mesh] of instancedByType) { scene.remove(mesh) }
+  instancedByType.clear()
+  instanceKeysByType.clear()
+  blockMaterials.clear()
+  updateVisibleBlocks(true)
 }
 
 function createBlockMesh(x, y, z, type = 1) {
@@ -675,6 +690,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyV') {
     thirdPerson = !thirdPerson
     fpGroup.visible = !thirdPerson && selectedKind === 'gun'
+  } else if (e.code === 'KeyG') {
+    setGraphicsMode(!HIGH_GRAPHICS)
   }
 })
 
