@@ -115,7 +115,7 @@ let myId = null
 const allBlocks = new Map() // key -> type
 const blockMeshes = new Map() // key -> mesh (only nearby)
 const blockMaterials = new Map() // type -> material
-const VISIBLE_RADIUS = 48
+const VISIBLE_RADIUS = 72
 // Instanced rendering state
 const instancedByType = new Map() // type -> InstancedMesh
 const instanceKeysByType = new Map() // type -> [key]
