@@ -32,6 +32,7 @@ document.body.appendChild(crosshair)
 
 // Three.js setup
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
+renderer.outputColorSpace = THREE.SRGBColorSpace
 let currentDPR = Math.min(window.devicePixelRatio || 1, 1.25)
 const targetDPR = currentDPR
 renderer.setPixelRatio(targetDPR)
@@ -45,6 +46,7 @@ const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerH
 scene.add(camera)
 let thirdPerson = false
 const thirdOffset = new THREE.Vector3(0, 2.2, 3.5)
+const thirdMinY = 0.4
 // First-person hands + gun group (attached to camera)
 const fpGroup = new THREE.Group()
 fpGroup.position.set(0.35, -0.35, -0.8)
@@ -263,7 +265,7 @@ function getBlockMaterial(type) {
   const opacity = (type === 6) ? 0.6 : (type === 8 ? 0.35 : 1.0)
   const mat = FAST_MODE
     ? new THREE.MeshBasicMaterial({ map: tex, transparent, opacity })
-    : new THREE.MeshLambertMaterial({ map: tex, transparent, opacity })
+    : new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, metalness: 0.0, transparent, opacity })
   blockMaterials.set(type, mat)
   return mat
 }
@@ -272,8 +274,18 @@ function setGraphicsMode(high) {
   HIGH_GRAPHICS = !!high
   FAST_MODE = !HIGH_GRAPHICS
   // adjust lighting slightly for high graphics
-  ambient.intensity = HIGH_GRAPHICS ? 0.55 : 0.4
-  sun.intensity = HIGH_GRAPHICS ? 0.8 : 0.55
+  ambient.intensity = HIGH_GRAPHICS ? 0.6 : 0.4
+  sun.intensity = HIGH_GRAPHICS ? 1.0 : 0.55
+  renderer.toneMapping = HIGH_GRAPHICS ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping
+  renderer.toneMappingExposure = 1.0
+  renderer.shadowMap.enabled = HIGH_GRAPHICS
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  sun.castShadow = HIGH_GRAPHICS
+  ground.receiveShadow = HIGH_GRAPHICS
+  if (HIGH_GRAPHICS) {
+    const s = sun.shadow; s.mapSize.set(1024,1024); s.camera.near=0.5; s.camera.far=200; s.camera.left=-30; s.camera.right=30; s.camera.top=30; s.camera.bottom=-30
+  }
+  scene.fog = HIGH_GRAPHICS ? new THREE.FogExp2(0x87ceeb, 0.003) : null
   // rebuild materials and instanced meshes
   for (const [type, mesh] of instancedByType) { scene.remove(mesh) }
   instancedByType.clear()
