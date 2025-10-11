@@ -482,7 +482,13 @@ function computeInputAxes() {
   if (pressed.has('KeyA')) move.sub(right)
   // normalize to unit length
   if (move.lengthSq() > 0) move.normalize()
-  return { ax: move.x, az: move.z }
+  // third-person free mode vertical movement (R/F handled in keydown for camera; use Space/Shift for fly)
+  let fy = 0
+  if (thirdPerson) {
+    if (pressed.has('Space')) fy += 1
+    if (pressed.has('ShiftLeft') || pressed.has('ShiftRight')) fy -= 1
+  }
+  return { ax: move.x, az: move.z, fy }
 }
 
 // WebSocket setup
@@ -605,9 +611,9 @@ function handleState(msg) {
 setInterval(() => {
   if (!socket || socket.readyState !== WebSocket.OPEN) return
   if (!pointerLocked) return
-  const { ax, az } = computeInputAxes()
+  const { ax, az, fy } = computeInputAxes()
   const jump = wantJump; wantJump = false
-  socket.send(JSON.stringify({ type: 'input', input: { ax, az, jump, sprint, yaw, pitch } }))
+  socket.send(JSON.stringify({ type: 'input', input: { ax, az, fy, jump, sprint, yaw, pitch, third: thirdPerson } }))
 }, 33)
 
 // Build: place/remove blocks with mouse

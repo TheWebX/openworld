@@ -77,6 +77,8 @@ public class GameService {
         public int hp = 100;
         public double yaw = 0;
         public double pitch = 0;
+        public boolean freeMode = false; // third-person free movement (no collisions except ground)
+        public double flyY = 0; // up/down control when in freeMode
         public Player(String id) { this.id = id; }
     }
 
@@ -98,29 +100,45 @@ public class GameService {
         if (p == null) return;
         double ax = input.path("ax").asDouble(0);
         double az = input.path("az").asDouble(0);
+        double fy = input.path("fy").asDouble(0);
         boolean jump = input.path("jump").asBoolean(false);
         boolean sprint = input.path("sprint").asBoolean(false);
+        boolean third = input.path("third").asBoolean(false);
         // camera orientation (for third-person visuals)
         p.yaw = input.path("yaw").asDouble(p.yaw);
         p.pitch = input.path("pitch").asDouble(p.pitch);
-        double accel = sprint ? 140 : 90;
-        p.velocity.x += ax * accel * 0.016;
-        p.velocity.z += az * accel * 0.016;
-        // clamp planar speed
-        double maxSpeed = sprint ? 12.0 : 7.0;
-        double planar = Math.hypot(p.velocity.x, p.velocity.z);
-        if (planar > maxSpeed) {
-            double scale = maxSpeed / planar;
-            p.velocity.x *= scale;
-            p.velocity.z *= scale;
+        p.freeMode = third;
+        p.flyY = fy;
+        if (p.freeMode) {
+            double maxSpeed = sprint ? 14.0 : 9.0;
+            p.velocity.x = ax * maxSpeed;
+            p.velocity.z = az * maxSpeed;
+            p.velocity.y = fy * (sprint ? 10.0 : 6.0);
+            p.onGround = false;
+        } else {
+            double accel = sprint ? 140 : 90;
+            p.velocity.x += ax * accel * 0.016;
+            p.velocity.z += az * accel * 0.016;
+            // clamp planar speed
+            double maxSpeed = sprint ? 12.0 : 7.0;
+            double planar = Math.hypot(p.velocity.x, p.velocity.z);
+            if (planar > maxSpeed) {
+                double scale = maxSpeed / planar;
+                p.velocity.x *= scale;
+                p.velocity.z *= scale;
+            }
+            if (jump && p.onGround) { p.velocity.y = 8.5; p.onGround = false; }
         }
-        if (jump && p.onGround) { p.velocity.y = 8.5; p.onGround = false; }
     }
 
     public void tick() {
         double dt = 0.016;
         for (Player p : players.values()) {
-            applyFlatPhysics(p, dt);
+            if (p.freeMode) {
+                applyFreePhysics(p, dt);
+            } else {
+                applyFlatPhysics(p, dt);
+            }
         }
         // simple NPC wander and social/police behavior
         for (NPC n : npcs.values()) {
@@ -246,6 +264,7 @@ public class GameService {
             // integrate and ground collide
             n.position.x += n.velocity.x * dt;
             n.position.z += n.velocity.z * dt;
+            // keep NPCs on walkable ground, not roofs/water
             int groundY = Math.max(0, getSurfaceY((int)Math.floor(n.position.x), (int)Math.floor(n.position.z)));
             n.position.y = groundY;
         }
@@ -320,6 +339,7 @@ public class GameService {
         double l = Math.sqrt(vx*vx + vy*vy + vz*vz);
         if (l == 0) return; vx/=l; vy/=l; vz/=l;
         projectiles.add(new Projectile(null, new Vec3(sx, sy, sz), new Vec3(vx*speed, vy*speed, vz*speed), 2.0));
+        Shot sh = new Shot(); sh.ownerKind = "npc"; sh.ownerId = "police"; sh.sx = sx; sh.sy = sy; sh.sz = sz; sh.dx = vx; sh.dy = vy; sh.dz = vz; recentShots.add(sh);
     }
 
     private boolean hasLineOfSight(double x0, double y0, double z0, double x1, double y1, double z1) {
@@ -633,6 +653,21 @@ public class GameService {
         } else {
             p.velocity.z = 0;
         }
+    }
+
+    // Free camera-like physics: no collisions except ground clip (prevent underground)
+    private void applyFreePhysics(Player p, double dt) {
+        // integrate directly; minimal damping
+        p.position.x += p.velocity.x * dt;
+        p.position.y += p.velocity.y * dt;
+        p.position.z += p.velocity.z * dt;
+        // prevent going underground
+        int groundY = Math.max(0, getSurfaceY((int)Math.floor(p.position.x), (int)Math.floor(p.position.z)));
+        if (p.position.y < groundY + 0.2) {
+            p.position.y = groundY + 0.2;
+            if (p.velocity.y < 0) p.velocity.y = 0;
+        }
+        p.onGround = false;
     }
 
     private boolean collides(double cx, double cy, double cz) {
