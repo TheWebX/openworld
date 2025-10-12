@@ -343,27 +343,68 @@ function createHumanRig(palette, isPolice = false) {
     lastPos: new THREE.Vector3(), 
     walkPhase: 0,
     isPolice: isPolice,
+    shooting: false,
+    shootTime: 0,
+    shootDuration: 0.5, // Duration of shooting animation in seconds
     update(pos, yaw, pitch, dt) {
       const dx = pos.x - this.lastPos.x, dz = pos.z - this.lastPos.z
       const speed = Math.min(1.0, Math.hypot(dx, dz) / Math.max(0.0001, dt))
       this.walkPhase += speed * dt * 6.0
       
+      // Update shooting animation
+      if (this.shooting) {
+        this.shootTime += dt
+        if (this.shootTime >= this.shootDuration) {
+          this.shooting = false
+          this.shootTime = 0
+        }
+      }
+      
       // Enhanced walking animation with more realistic movement
       const swing = Math.sin(this.walkPhase) * 0.6 * speed
       const bodyBob = Math.abs(Math.sin(this.walkPhase * 2)) * 0.05 * speed
       
-      this.parts.leftLeg.rotation.x = swing
-      this.parts.rightLeg.rotation.x = -swing
-      this.parts.leftArm.rotation.x = -swing * 0.8
-      this.parts.rightArm.rotation.x = swing * 0.8
+      // Apply walking animation only when not shooting
+      if (!this.shooting) {
+        this.parts.leftLeg.rotation.x = swing
+        this.parts.rightLeg.rotation.x = -swing
+        this.parts.leftArm.rotation.x = -swing * 0.8
+        this.parts.rightArm.rotation.x = swing * 0.8
+      } else {
+        // Shooting animation - raise gun and aim
+        const shootProgress = this.shootTime / this.shootDuration
+        const aimHeight = Math.sin(shootProgress * Math.PI) * 0.8 // Smooth raise and lower
+        
+        // Raise right arm to aim
+        this.parts.rightArm.rotation.x = -Math.PI/2 + aimHeight * 0.3
+        this.parts.rightArm.rotation.z = aimHeight * 0.2
+        
+        // Slight body lean forward when aiming
+        this.parts.body.rotation.x = aimHeight * 0.1
+        
+        // Left arm supports the gun
+        this.parts.leftArm.rotation.x = -Math.PI/3 + aimHeight * 0.2
+        this.parts.leftArm.rotation.z = -aimHeight * 0.1
+        
+        // Head looks forward more intently
+        this.parts.head.rotation.x = pitch * 0.3 + aimHeight * 0.1
+      }
       
-      // Body bobbing
-      this.parts.body.position.y = legsH + bodyH / 2 + bodyBob
+      // Body bobbing (reduced when shooting)
+      const bobAmount = this.shooting ? bodyBob * 0.3 : bodyBob
+      this.parts.body.position.y = legsH + bodyH / 2 + bobAmount
       
       this.group.rotation.y = yaw
-      this.parts.head.rotation.x = pitch * 0.5
+      if (!this.shooting) {
+        this.parts.head.rotation.x = pitch * 0.5
+      }
       this.lastPos.copy(pos)
-    } 
+    },
+    
+    startShooting() {
+      this.shooting = true
+      this.shootTime = 0
+    }
   }
   return rig
 }
@@ -827,18 +868,7 @@ function connect() {
       if (msg.ownerId) {
         lastShotById.set(msg.ownerId, now)
       } else if (msg.ownerKind === 'npc') {
-      // reinforce police muzzle flashes
-      if (msg.ownerId === 'police') {
-        // find nearest police rig and attach gun + flash
-        let best = null, bestD = Infinity
-        for (const [id, rig] of npcRigs) {
-          const pos = rig.group.position
-          const d = Math.hypot(pos.x - msg.sx, pos.y - msg.sy, pos.z - msg.sz)
-          if (d < bestD) { bestD = d; best = rig }
-        }
-        if (best) attachGunToRightArm(best)
-      }
-        // infer shooter by nearest NPC to shot start
+        // Find the shooting NPC and trigger shooting animation
         const sx = msg.sx, sy = msg.sy, sz = msg.sz
         let bestId = null, bestD = Infinity
         for (const [id, rig] of npcRigs) {
@@ -846,7 +876,22 @@ function connect() {
           const d = Math.hypot(p.x - sx, p.y - sy, p.z - sz)
           if (d < bestD) { bestD = d; bestId = id }
         }
-        if (bestId && bestD < 2.0) lastShotById.set(bestId, now)
+        
+        if (bestId && bestD < 2.0) {
+          lastShotById.set(bestId, now)
+          const shootingRig = npcRigs.get(bestId)
+          if (shootingRig && shootingRig.startShooting) {
+            shootingRig.startShooting()
+          }
+          
+          // Add muzzle flash for police
+          if (shootingRig && shootingRig.isPolice) {
+            const light = new THREE.PointLight(0xffeeaa, 2.0, 3)
+            light.position.set(sx, sy, sz)
+            scene.add(light)
+            setTimeout(() => scene.remove(light), 100)
+          }
+        }
       }
     } else if (msg.type === 'death') {
       if (msg.playerId === myId) {
@@ -876,7 +921,17 @@ function handleState(msg) {
     const pitchVal = (p.pitch ?? 0)
     rig.update(new THREE.Vector3(p.x, p.y, p.z), yawVal, pitchVal, dt)
     const tShot = lastShotById.get(p.id)
-    if (tShot && now - tShot < 120) attachGunToRightArm(rig)
+    if (tShot && now - tShot < 120) {
+      if (rig.isPolice && rig.parts._permanentGun) {
+        // Police already have permanent guns, just trigger shooting animation
+        if (!rig.shooting) {
+          rig.startShooting()
+        }
+      } else {
+        // Non-police players get temporary guns
+        attachGunToRightArm(rig)
+      }
+    }
     // show local body in third-person only
     rig.group.visible = !(p.id === myId && !thirdPerson)
     if (p.id === myId) {
@@ -908,9 +963,19 @@ function handleState(msg) {
       // make NPCs face their movement/camera direction more strongly
       const dirYaw = Math.atan2(-(n.x - (rig.lastPos?.x ?? n.x)), -(n.z - (rig.lastPos?.z ?? n.z))) || rig.group.rotation.y
       rig.update(new THREE.Vector3(n.x, n.y, n.z), dirYaw, 0, dt2)
-      // show gun if recently shot
+      // show gun if recently shot and trigger shooting animation
       const t = lastShotById.get(n.id)
-      if (t && now2 - t < 120) attachGunToRightArm(rig)
+      if (t && now2 - t < 120) {
+        if (rig.isPolice && rig.parts._permanentGun) {
+          // Police already have permanent guns, just trigger shooting animation
+          if (!rig.shooting) {
+            rig.startShooting()
+          }
+        } else {
+          // Non-police NPCs get temporary guns
+          attachGunToRightArm(rig)
+        }
+      }
       seen.add(n.id)
     }
     // remove stale
@@ -1079,6 +1144,10 @@ function attachPermanentGunToPolice(rig) {
   guard.rotation.x = Math.PI / 2
   guard.position.set(0.05, -0.2, -0.05)
   gunGroup.add(guard)
+  
+  // Position gun for proper holding (resting position)
+  gunGroup.position.set(0.1, -0.2, -0.1)
+  gunGroup.rotation.x = 0.2 // Slight downward angle when not shooting
   
   // Attach to right arm
   rig.parts.rightArm.add(gunGroup)
