@@ -382,18 +382,18 @@ function createHumanRig(palette, isPolice = false) {
       } else {
         // Shooting animation - raise gun and aim
         const shootProgress = this.shootTime / this.shootDuration
-        const aimHeight = Math.sin(shootProgress * Math.PI) * 1.0 // More pronounced animation
+        const aimHeight = Math.sin(shootProgress * Math.PI) * 1.2 // Even more pronounced animation
         
-        // Raise right arm to aim (more dramatic)
-        this.parts.rightArm.rotation.x = -Math.PI/2 + aimHeight * 0.5
-        this.parts.rightArm.rotation.z = aimHeight * 0.3
+        // Raise right arm to aim (very dramatic)
+        this.parts.rightArm.rotation.x = -Math.PI/2 + aimHeight * 0.8
+        this.parts.rightArm.rotation.z = aimHeight * 0.5
         
         // Slight body lean forward when aiming
         this.parts.body.rotation.x = aimHeight * 0.15
         
-        // Left arm supports the gun (more pronounced)
-        this.parts.leftArm.rotation.x = -Math.PI/2.5 + aimHeight * 0.3
-        this.parts.leftArm.rotation.z = -aimHeight * 0.2
+        // Left arm supports the gun (very pronounced)
+        this.parts.leftArm.rotation.x = -Math.PI/2.2 + aimHeight * 0.5
+        this.parts.leftArm.rotation.z = -aimHeight * 0.4
         
         // Head looks forward more intently
         this.parts.head.rotation.x = pitch * 0.3 + aimHeight * 0.15
@@ -427,6 +427,15 @@ function createHumanRig(palette, isPolice = false) {
       this.shooting = true
       this.shootTime = 0
       console.log('Police started shooting animation!', this.isPolice)
+      
+      // Add bright flash effect when shooting starts
+      if (this.isPolice && this.parts._permanentGun) {
+        const flash = new THREE.PointLight(0xffff00, 3.0, 5)
+        flash.position.copy(this.group.position)
+        flash.position.y += 1.5
+        scene.add(flash)
+        setTimeout(() => scene.remove(flash), 200)
+      }
     }
   }
   return rig
@@ -1002,9 +1011,25 @@ function handleState(msg) {
       
       // Test: Make police shoot periodically for demonstration
       if (rig.isPolice && rig.parts._permanentGun && !rig.shooting) {
-        // Random chance to shoot every few seconds
-        if (Math.random() < 0.01) { // 1% chance per frame
+        // Random chance to shoot every few seconds - increased probability
+        if (Math.random() < 0.05) { // 5% chance per frame for testing
           rig.startShooting()
+          console.log('Police test shooting triggered!', n.id)
+        }
+        
+        // Also shoot when player is nearby
+        if (myId) {
+          const playerRig = playerRigs.get(myId)
+          if (playerRig) {
+            const distance = Math.hypot(
+              rig.group.position.x - playerRig.group.position.x,
+              rig.group.position.z - playerRig.group.position.z
+            )
+            if (distance < 10 && Math.random() < 0.1) { // 10% chance when close
+              rig.startShooting()
+              console.log('Police shooting at nearby player!', n.id, 'distance:', distance)
+            }
+          }
         }
       }
       seen.add(n.id)
