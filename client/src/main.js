@@ -50,61 +50,160 @@ const thirdMinY = 0.4
 // First-person hands + gun group (attached to camera)
 const fpGroup = new THREE.Group()
 fpGroup.position.set(0.35, -0.35, -0.8)
+
+// Enhanced first-person arm
 const fpArmGeom = new THREE.BoxGeometry(0.12, 0.4, 0.12)
-const fpArmMat = new THREE.MeshLambertMaterial({ color: 0xffd7b3 })
+const fpArmMat = new THREE.MeshStandardMaterial({ 
+  color: 0xffd7b3, 
+  roughness: 0.8, 
+  metalness: 0.0 
+})
 const fpRightArm = new THREE.Mesh(fpArmGeom, fpArmMat)
 fpRightArm.position.set(0, -0.2, 0)
-const fpGunGeom = new THREE.BoxGeometry(0.25, 0.12, 0.5)
-const fpGunMat = new THREE.MeshLambertMaterial({ color: 0x333333 })
-const fpGun = new THREE.Mesh(fpGunGeom, fpGunMat)
-fpGun.position.set(0.05, -0.05, -0.2)
+fpRightArm.castShadow = true
+
+// Enhanced first-person gun
+const fpGunGroup = new THREE.Group()
+
+// Main gun body
+const fpGunBodyGeom = new THREE.BoxGeometry(0.15, 0.08, 0.4)
+const fpGunBodyMat = new THREE.MeshStandardMaterial({ 
+  color: 0x2a2a2a, 
+  roughness: 0.3, 
+  metalness: 0.8 
+})
+const fpGunBody = new THREE.Mesh(fpGunBodyGeom, fpGunBodyMat)
+fpGunBody.position.set(0.05, -0.05, -0.1)
+fpGunGroup.add(fpGunBody)
+
+// Gun barrel
+const fpBarrelGeom = new THREE.CylinderGeometry(0.025, 0.025, 0.25, 8)
+const fpBarrelMat = new THREE.MeshStandardMaterial({ 
+  color: 0x1a1a1a, 
+  roughness: 0.2, 
+  metalness: 0.9 
+})
+const fpBarrel = new THREE.Mesh(fpBarrelGeom, fpBarrelMat)
+fpBarrel.rotation.z = Math.PI / 2
+fpBarrel.position.set(0.05, -0.05, -0.3)
+fpGunGroup.add(fpBarrel)
+
+// Gun handle
+const fpHandleGeom = new THREE.BoxGeometry(0.08, 0.15, 0.1)
+const fpHandleMat = new THREE.MeshStandardMaterial({ 
+  color: 0x8b4513, 
+  roughness: 0.8, 
+  metalness: 0.0 
+})
+const fpHandle = new THREE.Mesh(fpHandleGeom, fpHandleMat)
+fpHandle.position.set(0.05, -0.15, 0)
+fpGunGroup.add(fpHandle)
+
+// Trigger guard
+const fpGuardGeom = new THREE.TorusGeometry(0.05, 0.015, 4, 8, Math.PI)
+const fpGuardMat = new THREE.MeshStandardMaterial({ 
+  color: 0x2a2a2a, 
+  roughness: 0.3, 
+  metalness: 0.8 
+})
+const fpGuard = new THREE.Mesh(fpGuardGeom, fpGuardMat)
+fpGuard.rotation.x = Math.PI / 2
+fpGuard.position.set(0.05, -0.1, 0)
+fpGunGroup.add(fpGuard)
+
+fpGunGroup.position.set(0.05, -0.05, -0.2)
+
 fpGroup.add(fpRightArm)
-fpGroup.add(fpGun)
+fpGroup.add(fpGunGroup)
 camera.add(fpGroup)
 fpGroup.visible = false
 let fpRecoil = 0
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.4)
+// Enhanced lighting system
+const ambient = new THREE.AmbientLight(0x87ceeb, 0.3) // Sky blue ambient
 scene.add(ambient)
-const sun = new THREE.DirectionalLight(0xffffff, 0.55)
+
+// Main sun light
+const sun = new THREE.DirectionalLight(0xfff8dc, 0.8) // Warm sunlight
 sun.position.set(0.5, 1, 0.3)
+sun.castShadow = true
+sun.shadow.mapSize.width = 2048
+sun.shadow.mapSize.height = 2048
+sun.shadow.camera.near = 0.5
+sun.shadow.camera.far = 200
+sun.shadow.camera.left = -50
+sun.shadow.camera.right = 50
+sun.shadow.camera.top = 50
+sun.shadow.camera.bottom = -50
+sun.shadow.bias = -0.0001
 scene.add(sun)
+
+// Fill light for better illumination
+const fillLight = new THREE.DirectionalLight(0x4a90e2, 0.2)
+fillLight.position.set(-0.5, 0.5, -0.3)
+scene.add(fillLight)
+
+// Rim light for better depth
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.15)
+rimLight.position.set(0, 0.8, 1)
+scene.add(rimLight)
 
 // Ground plane (grass style)
 const groundGeom = new THREE.PlaneGeometry(1200, 1200, 1, 1)
 groundGeom.rotateX(-Math.PI / 2)
 function createGrassTexture() {
-  const size = 128
+  const size = 256 // Higher resolution
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d')
-  const img = ctx.createImageData(size, size)
-  const data = img.data
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = (y * size + x) * 4
-      const n = Math.random() * 0.15 - 0.075 // noise
-      // base grass color ~ #6aa84f
-      let r = 0x6a / 255 + n
-      let g = 0xa8 / 255 + n
-      let b = 0x4f / 255 + n
-      r = Math.min(1, Math.max(0, r))
-      g = Math.min(1, Math.max(0, g))
-      b = Math.min(1, Math.max(0, b))
-      data[i] = Math.floor(r * 255)
-      data[i + 1] = Math.floor(g * 255)
-      data[i + 2] = Math.floor(b * 255)
-      data[i + 3] = 255
-    }
+  
+  // Base grass color
+  ctx.fillStyle = '#5a9a4a'
+  ctx.fillRect(0, 0, size, size)
+  
+  // Add grass blade patterns
+  ctx.strokeStyle = '#4a8a3a'
+  ctx.lineWidth = 1
+  for (let i = 0; i < 200; i++) {
+    const x = Math.random() * size
+    const y = Math.random() * size
+    const height = Math.random() * 8 + 2
+    const angle = (Math.random() - 0.5) * 0.3
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x + Math.sin(angle) * height, y - height)
+    ctx.stroke()
   }
-  ctx.putImageData(img, 0, 0)
+  
+  // Add dirt patches
+  ctx.fillStyle = '#8b4513'
+  for (let i = 0; i < 30; i++) {
+    const x = Math.random() * size
+    const y = Math.random() * size
+    const r = Math.random() * 4 + 1
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  
+  // Add flower spots
+  ctx.fillStyle = '#ff69b4'
+  for (let i = 0; i < 20; i++) {
+    const x = Math.random() * size
+    const y = Math.random() * size
+    const r = Math.random() * 1.5 + 0.5
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  
   const tex = new THREE.CanvasTexture(canvas)
   tex.wrapS = THREE.RepeatWrapping
   tex.wrapT = THREE.RepeatWrapping
-  tex.magFilter = THREE.NearestFilter
-  tex.minFilter = THREE.NearestFilter
-  tex.repeat.set(512, 512)
+  tex.magFilter = THREE.LinearFilter
+  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.repeat.set(256, 256)
   return tex
 }
 const groundMat = new THREE.MeshLambertMaterial({ map: createGrassTexture() })
@@ -154,24 +253,56 @@ function isWithinRadius(x, z) {
   return dist2xz(x + 0.5, z + 0.5, cx, cz) <= VISIBLE_RADIUS * VISIBLE_RADIUS
 }
 
-function createHumanRig(palette) {
+function createHumanRig(palette, isPolice = false) {
   const group = new THREE.Group()
-  const legsH = 0.8, bodyH = 0.8, headH = 0.2
+  const legsH = 0.8, bodyH = 0.8, headH = 0.25
   const legW = 0.22, legD = 0.22
   const bodyW = 0.5, bodyD = 0.28
   const armW = 0.18, armD = 0.18, armH = 0.8
-  const skinMat = new THREE.MeshLambertMaterial({ color: palette.skin })
-  const shirtMat = new THREE.MeshLambertMaterial({ color: palette.shirt })
-  const pantsMat = new THREE.MeshLambertMaterial({ color: palette.pants })
+  
+  // Enhanced materials with better properties
+  const skinMat = new THREE.MeshStandardMaterial({ 
+    color: palette.skin,
+    roughness: 0.8,
+    metalness: 0.0
+  })
+  const shirtMat = new THREE.MeshStandardMaterial({ 
+    color: palette.shirt,
+    roughness: 0.7,
+    metalness: 0.0
+  })
+  const pantsMat = new THREE.MeshStandardMaterial({ 
+    color: palette.pants,
+    roughness: 0.8,
+    metalness: 0.0
+  })
+  
+  // Create legs with more detail
   const legGeom = new THREE.BoxGeometry(legW, legsH, legD)
   const leftLeg = new THREE.Mesh(legGeom, pantsMat)
   const rightLeg = new THREE.Mesh(legGeom, pantsMat)
   const legOffsetX = (legW / 2) + 0.05
   leftLeg.position.set(-legOffsetX, legsH / 2, 0)
   rightLeg.position.set(legOffsetX, legsH / 2, 0)
+  leftLeg.castShadow = true
+  rightLeg.castShadow = true
+  
+  // Enhanced body with belt and details
   const bodyGeom = new THREE.BoxGeometry(bodyW, bodyH, bodyD)
   const body = new THREE.Mesh(bodyGeom, shirtMat)
   body.position.set(0, legsH + bodyH / 2, 0)
+  body.castShadow = true
+  
+  // Add belt for police
+  if (isPolice) {
+    const beltGeom = new THREE.BoxGeometry(bodyW + 0.1, 0.08, bodyD + 0.1)
+    const beltMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.3, metalness: 0.8 })
+    const belt = new THREE.Mesh(beltGeom, beltMat)
+    belt.position.set(0, legsH + bodyH * 0.3, 0)
+    body.add(belt)
+  }
+  
+  // Enhanced arms
   const armGeom = new THREE.BoxGeometry(armW, armH, armD)
   const leftArm = new THREE.Mesh(armGeom, skinMat)
   const rightArm = new THREE.Mesh(armGeom, skinMat)
@@ -179,24 +310,61 @@ function createHumanRig(palette) {
   const armY = legsH + armH / 2
   leftArm.position.set(-armOffsetX, armY, 0)
   rightArm.position.set(armOffsetX, armY, 0)
+  leftArm.castShadow = true
+  rightArm.castShadow = true
+  
+  // Enhanced head with hat for police
   const headGeom = new THREE.BoxGeometry(0.5, headH, 0.5)
   const head = new THREE.Mesh(headGeom, skinMat)
   head.position.set(0, legsH + bodyH + headH / 2, 0)
+  head.castShadow = true
+  
+  // Add police hat
+  if (isPolice) {
+    const hatGeom = new THREE.CylinderGeometry(0.3, 0.35, 0.15, 8)
+    const hatMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4, metalness: 0.2 })
+    const hat = new THREE.Mesh(hatGeom, hatMat)
+    hat.position.set(0, headH / 2 + 0.08, 0)
+    head.add(hat)
+    
+    // Add police badge
+    const badgeGeom = new THREE.BoxGeometry(0.08, 0.06, 0.02)
+    const badgeMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.2, metalness: 0.9 })
+    const badge = new THREE.Mesh(badgeGeom, badgeMat)
+    badge.position.set(0.15, 0.1, 0.2)
+    body.add(badge)
+  }
+  
   group.add(leftLeg, rightLeg, body, leftArm, rightArm, head)
-  const rig = { group, parts: { leftLeg, rightLeg, leftArm, rightArm, head, body }, lastPos: new THREE.Vector3(), walkPhase: 0,
+  
+  const rig = { 
+    group, 
+    parts: { leftLeg, rightLeg, leftArm, rightArm, head, body }, 
+    lastPos: new THREE.Vector3(), 
+    walkPhase: 0,
+    isPolice: isPolice,
     update(pos, yaw, pitch, dt) {
       const dx = pos.x - this.lastPos.x, dz = pos.z - this.lastPos.z
       const speed = Math.min(1.0, Math.hypot(dx, dz) / Math.max(0.0001, dt))
       this.walkPhase += speed * dt * 6.0
+      
+      // Enhanced walking animation with more realistic movement
       const swing = Math.sin(this.walkPhase) * 0.6 * speed
+      const bodyBob = Math.abs(Math.sin(this.walkPhase * 2)) * 0.05 * speed
+      
       this.parts.leftLeg.rotation.x = swing
       this.parts.rightLeg.rotation.x = -swing
       this.parts.leftArm.rotation.x = -swing * 0.8
       this.parts.rightArm.rotation.x = swing * 0.8
+      
+      // Body bobbing
+      this.parts.body.position.y = legsH + bodyH / 2 + bodyBob
+      
       this.group.rotation.y = yaw
       this.parts.head.rotation.x = pitch * 0.5
       this.lastPos.copy(pos)
-    } }
+    } 
+  }
   return rig
 }
 
@@ -219,10 +387,18 @@ function getOrCreatePlayerMesh(id) {
 function getOrCreateNPCRig(id, kind) {
   let rig = npcRigs.get(id)
   if (!rig) {
-    const palette = kind==='police' ? { skin:0xffd7b3, shirt:0x2244ff, pants:0x111133 } : { skin:0xffd7b3, shirt:0x88aa55, pants:0x554433 }
-    rig = createHumanRig(palette)
+    const isPolice = kind === 'police'
+    const palette = isPolice 
+      ? { skin: 0xffd7b3, shirt: 0x1a237e, pants: 0x0d47a1 } // Dark blue police uniform
+      : { skin: 0xffd7b3, shirt: 0x4caf50, pants: 0x2e7d32 } // Green civilian clothes
+    rig = createHumanRig(palette, isPolice)
     scene.add(rig.group)
     npcRigs.set(id, rig)
+    
+    // Add permanent gun to police
+    if (isPolice) {
+      attachPermanentGunToPolice(rig)
+    }
   }
   return rig
 }
@@ -231,41 +407,143 @@ let FAST_MODE = true
 let HIGH_GRAPHICS = false
 function getBlockMaterial(type) {
   if (blockMaterials.has(type)) return blockMaterials.get(type)
-  const size = 16
+  const size = 32 // Increased texture resolution
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d')
-  ctx.fillStyle = '#888'
-  // type palette
-  if (type === 1) ctx.fillStyle = '#777777' // stone
-  if (type === 2) ctx.fillStyle = '#8b5a2b' // wood trunk
-  if (type === 3) ctx.fillStyle = '#3faa3f' // leaves
-  if (type === 4) ctx.fillStyle = '#996633' // dirt
-  if (type === 5) ctx.fillStyle = '#c2b280' // sand
-  if (type === 6) ctx.fillStyle = '#3aa7ff' // water (blue, transparent)
-  if (type === 7) ctx.fillStyle = '#444444' // road
-  if (type === 8) ctx.fillStyle = '#88ccee' // glass
-  if (type === 9) ctx.fillStyle = '#7a5546' // roof
+  
+  // Enhanced type palette with more realistic colors
+  let baseColor = '#888'
+  let roughness = 0.9
+  let metalness = 0.0
+  let normalStrength = 0.0
+  
+  if (type === 1) { // stone
+    baseColor = '#8a8a8a'
+    roughness = 0.8
+    metalness = 0.1
+    normalStrength = 0.3
+  } else if (type === 2) { // wood trunk
+    baseColor = '#8b5a2b'
+    roughness = 0.7
+    metalness = 0.0
+    normalStrength = 0.4
+  } else if (type === 3) { // leaves
+    baseColor = '#4a7c59'
+    roughness = 0.9
+    metalness = 0.0
+    normalStrength = 0.2
+  } else if (type === 4) { // dirt
+    baseColor = '#8b4513'
+    roughness = 0.9
+    metalness = 0.0
+    normalStrength = 0.1
+  } else if (type === 5) { // sand
+    baseColor = '#f4e4bc'
+    roughness = 0.8
+    metalness = 0.0
+    normalStrength = 0.1
+  } else if (type === 6) { // water
+    baseColor = '#4a90e2'
+    roughness = 0.1
+    metalness = 0.0
+    normalStrength = 0.0
+  } else if (type === 7) { // road
+    baseColor = '#4a4a4a'
+    roughness = 0.6
+    metalness = 0.0
+    normalStrength = 0.2
+  } else if (type === 8) { // glass
+    baseColor = '#b8d4f0'
+    roughness = 0.0
+    metalness = 0.0
+    normalStrength = 0.0
+  } else if (type === 9) { // roof
+    baseColor = '#8b4513'
+    roughness = 0.7
+    metalness = 0.0
+    normalStrength = 0.3
+  }
+  
+  // Create more detailed texture with patterns
+  ctx.fillStyle = baseColor
   ctx.fillRect(0, 0, size, size)
-  // add subtle noise
+  
+  // Add texture patterns based on block type
+  if (type === 1) { // Stone - add cracks and variations
+    ctx.fillStyle = '#6a6a6a'
+    for (let i = 0; i < 8; i++) {
+      const x = Math.random() * size
+      const y = Math.random() * size
+      const w = Math.random() * 3 + 1
+      const h = Math.random() * 3 + 1
+      ctx.fillRect(x, y, w, h)
+    }
+  } else if (type === 2) { // Wood - add grain
+    ctx.strokeStyle = '#6b4423'
+    ctx.lineWidth = 1
+    for (let i = 0; i < 6; i++) {
+      const y = (i + 1) * size / 7
+      ctx.beginPath()
+      ctx.moveTo(0, y)
+      ctx.lineTo(size, y + Math.sin(i) * 2)
+      ctx.stroke()
+    }
+  } else if (type === 3) { // Leaves - add leaf patterns
+    ctx.fillStyle = '#3d5a47'
+    for (let i = 0; i < 12; i++) {
+      const x = Math.random() * size
+      const y = Math.random() * size
+      const r = Math.random() * 3 + 1
+      ctx.beginPath()
+      ctx.arc(x, y, r, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  } else if (type === 4) { // Dirt - add clumps
+    ctx.fillStyle = '#654321'
+    for (let i = 0; i < 15; i++) {
+      const x = Math.random() * size
+      const y = Math.random() * size
+      const r = Math.random() * 2 + 0.5
+      ctx.beginPath()
+      ctx.arc(x, y, r, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
+  
+  // Add subtle noise for all textures
   const img = ctx.getImageData(0, 0, size, size)
   const data = img.data
   for (let i = 0; i < data.length; i += 4) {
-    const n = (Math.random() - 0.5) * 20
+    const n = (Math.random() - 0.5) * 15
     data[i] = Math.max(0, Math.min(255, data[i] + n))
     data[i+1] = Math.max(0, Math.min(255, data[i+1] + n))
     data[i+2] = Math.max(0, Math.min(255, data[i+2] + n))
   }
   ctx.putImageData(img, 0, 0)
+  
   const tex = new THREE.CanvasTexture(canvas)
-  tex.magFilter = THREE.NearestFilter
-  tex.minFilter = THREE.NearestFilter
+  tex.magFilter = THREE.LinearFilter
+  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.wrapS = THREE.RepeatWrapping
+  tex.wrapT = THREE.RepeatWrapping
+  tex.repeat.set(1, 1)
+  
   const transparent = (type === 6 || type === 8)
-  const opacity = (type === 6) ? 0.6 : (type === 8 ? 0.35 : 1.0)
+  const opacity = (type === 6) ? 0.7 : (type === 8 ? 0.4 : 1.0)
+  
   const mat = FAST_MODE
     ? new THREE.MeshBasicMaterial({ map: tex, transparent, opacity })
-    : new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, metalness: 0.0, transparent, opacity })
+    : new THREE.MeshStandardMaterial({ 
+        map: tex, 
+        transparent, 
+        opacity,
+        roughness: roughness,
+        metalness: metalness,
+        normalScale: new THREE.Vector2(normalStrength, normalStrength)
+      })
+  
   blockMaterials.set(type, mat)
   return mat
 }
@@ -273,20 +551,53 @@ function getBlockMaterial(type) {
 function setGraphicsMode(high) {
   HIGH_GRAPHICS = !!high
   FAST_MODE = !HIGH_GRAPHICS
-  // adjust lighting slightly for high graphics
-  ambient.intensity = HIGH_GRAPHICS ? 0.6 : 0.4
-  sun.intensity = HIGH_GRAPHICS ? 1.0 : 0.55
+  
+  // Enhanced lighting for high graphics
+  ambient.intensity = HIGH_GRAPHICS ? 0.4 : 0.3
+  sun.intensity = HIGH_GRAPHICS ? 1.2 : 0.8
+  fillLight.intensity = HIGH_GRAPHICS ? 0.3 : 0.2
+  rimLight.intensity = HIGH_GRAPHICS ? 0.25 : 0.15
+  
+  // Enhanced rendering settings
   renderer.toneMapping = HIGH_GRAPHICS ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping
-  renderer.toneMappingExposure = 1.0
+  renderer.toneMappingExposure = HIGH_GRAPHICS ? 1.2 : 1.0
   renderer.shadowMap.enabled = HIGH_GRAPHICS
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.shadowMap.type = HIGH_GRAPHICS ? THREE.PCFSoftShadowMap : THREE.BasicShadowMap
+  renderer.shadowMap.autoUpdate = HIGH_GRAPHICS
+  
+  // Enable shadows for all lights
   sun.castShadow = HIGH_GRAPHICS
+  fillLight.castShadow = HIGH_GRAPHICS
+  rimLight.castShadow = HIGH_GRAPHICS
+  
+  // Ground receives shadows
   ground.receiveShadow = HIGH_GRAPHICS
+  
+  // Enhanced shadow settings
   if (HIGH_GRAPHICS) {
-    const s = sun.shadow; s.mapSize.set(1024,1024); s.camera.near=0.5; s.camera.far=200; s.camera.left=-30; s.camera.right=30; s.camera.top=30; s.camera.bottom=-30
+    const s = sun.shadow
+    s.mapSize.set(2048, 2048)
+    s.camera.near = 0.5
+    s.camera.far = 200
+    s.camera.left = -50
+    s.camera.right = 50
+    s.camera.top = 50
+    s.camera.bottom = -50
+    s.bias = -0.0001
   }
-  scene.fog = HIGH_GRAPHICS ? new THREE.FogExp2(0x87ceeb, 0.003) : null
-  // rebuild materials and instanced meshes
+  
+  // Atmospheric fog
+  scene.fog = HIGH_GRAPHICS ? new THREE.FogExp2(0x87ceeb, 0.002) : null
+  
+  // Enable shadows for all existing objects
+  scene.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = HIGH_GRAPHICS
+      child.receiveShadow = HIGH_GRAPHICS
+    }
+  })
+  
+  // Rebuild materials and instanced meshes
   for (const [type, mesh] of instancedByType) { scene.remove(mesh) }
   instancedByType.clear()
   instanceKeysByType.clear()
@@ -715,6 +1026,70 @@ function attachGunToRightArm(rig) {
   light.position.set(0.1, -0.2, -0.22)
   rig.parts.rightArm.add(light)
   setTimeout(() => rig.parts.rightArm.remove(light), 60)
+}
+
+function attachPermanentGunToPolice(rig) {
+  if (!rig || !rig.parts || !rig.parts.rightArm) return
+  
+  // Create a more detailed gun model
+  const gunGroup = new THREE.Group()
+  
+  // Main gun body
+  const gunBodyGeom = new THREE.BoxGeometry(0.08, 0.06, 0.3)
+  const gunBodyMat = new THREE.MeshStandardMaterial({ 
+    color: 0x2a2a2a, 
+    roughness: 0.3, 
+    metalness: 0.8 
+  })
+  const gunBody = new THREE.Mesh(gunBodyGeom, gunBodyMat)
+  gunBody.position.set(0.05, -0.15, -0.1)
+  gunGroup.add(gunBody)
+  
+  // Gun barrel
+  const barrelGeom = new THREE.CylinderGeometry(0.02, 0.02, 0.2, 8)
+  const barrelMat = new THREE.MeshStandardMaterial({ 
+    color: 0x1a1a1a, 
+    roughness: 0.2, 
+    metalness: 0.9 
+  })
+  const barrel = new THREE.Mesh(barrelGeom, barrelMat)
+  barrel.rotation.z = Math.PI / 2
+  barrel.position.set(0.05, -0.15, -0.25)
+  gunGroup.add(barrel)
+  
+  // Gun handle
+  const handleGeom = new THREE.BoxGeometry(0.06, 0.12, 0.08)
+  const handleMat = new THREE.MeshStandardMaterial({ 
+    color: 0x8b4513, 
+    roughness: 0.8, 
+    metalness: 0.0 
+  })
+  const handle = new THREE.Mesh(handleGeom, handleMat)
+  handle.position.set(0.05, -0.25, -0.05)
+  gunGroup.add(handle)
+  
+  // Trigger guard
+  const guardGeom = new THREE.TorusGeometry(0.04, 0.01, 4, 8, Math.PI)
+  const guardMat = new THREE.MeshStandardMaterial({ 
+    color: 0x2a2a2a, 
+    roughness: 0.3, 
+    metalness: 0.8 
+  })
+  const guard = new THREE.Mesh(guardGeom, guardMat)
+  guard.rotation.x = Math.PI / 2
+  guard.position.set(0.05, -0.2, -0.05)
+  gunGroup.add(guard)
+  
+  // Attach to right arm
+  rig.parts.rightArm.add(gunGroup)
+  rig.parts._permanentGun = gunGroup
+  
+  // Make gun cast shadows
+  gunGroup.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true
+    }
+  })
 }
 
 function setSelectedType(type) {
