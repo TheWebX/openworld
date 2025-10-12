@@ -345,7 +345,7 @@ function createHumanRig(palette, isPolice = false) {
     isPolice: isPolice,
     shooting: false,
     shootTime: 0,
-    shootDuration: 0.5, // Duration of shooting animation in seconds
+    shootDuration: 1.0, // Duration of shooting animation in seconds
     update(pos, yaw, pitch, dt) {
       const dx = pos.x - this.lastPos.x, dz = pos.z - this.lastPos.z
       const speed = Math.min(1.0, Math.hypot(dx, dz) / Math.max(0.0001, dt))
@@ -370,24 +370,46 @@ function createHumanRig(palette, isPolice = false) {
         this.parts.rightLeg.rotation.x = -swing
         this.parts.leftArm.rotation.x = -swing * 0.8
         this.parts.rightArm.rotation.x = swing * 0.8
+        
+        // Reset gun glow when not shooting
+        if (this.parts._permanentGun) {
+          this.parts._permanentGun.traverse((child) => {
+            if (child.isMesh && child.material) {
+              child.material.emissive = new THREE.Color(0x000000) // No glow
+            }
+          })
+        }
       } else {
         // Shooting animation - raise gun and aim
         const shootProgress = this.shootTime / this.shootDuration
-        const aimHeight = Math.sin(shootProgress * Math.PI) * 0.8 // Smooth raise and lower
+        const aimHeight = Math.sin(shootProgress * Math.PI) * 1.0 // More pronounced animation
         
-        // Raise right arm to aim
-        this.parts.rightArm.rotation.x = -Math.PI/2 + aimHeight * 0.3
-        this.parts.rightArm.rotation.z = aimHeight * 0.2
+        // Raise right arm to aim (more dramatic)
+        this.parts.rightArm.rotation.x = -Math.PI/2 + aimHeight * 0.5
+        this.parts.rightArm.rotation.z = aimHeight * 0.3
         
         // Slight body lean forward when aiming
-        this.parts.body.rotation.x = aimHeight * 0.1
+        this.parts.body.rotation.x = aimHeight * 0.15
         
-        // Left arm supports the gun
-        this.parts.leftArm.rotation.x = -Math.PI/3 + aimHeight * 0.2
-        this.parts.leftArm.rotation.z = -aimHeight * 0.1
+        // Left arm supports the gun (more pronounced)
+        this.parts.leftArm.rotation.x = -Math.PI/2.5 + aimHeight * 0.3
+        this.parts.leftArm.rotation.z = -aimHeight * 0.2
         
         // Head looks forward more intently
-        this.parts.head.rotation.x = pitch * 0.3 + aimHeight * 0.1
+        this.parts.head.rotation.x = pitch * 0.3 + aimHeight * 0.15
+        
+        // Update gun position during shooting
+        if (this.parts._permanentGun) {
+          this.parts._permanentGun.rotation.x = -0.1 + aimHeight * 0.4 // Gun points forward when shooting
+          this.parts._permanentGun.position.z = -0.05 - aimHeight * 0.15 // Gun moves forward
+          
+          // Add visual feedback - make gun slightly glow when shooting
+          this.parts._permanentGun.traverse((child) => {
+            if (child.isMesh && child.material) {
+              child.material.emissive = new THREE.Color(0x222200) // Slight yellow glow
+            }
+          })
+        }
       }
       
       // Body bobbing (reduced when shooting)
@@ -404,6 +426,7 @@ function createHumanRig(palette, isPolice = false) {
     startShooting() {
       this.shooting = true
       this.shootTime = 0
+      console.log('Police started shooting animation!', this.isPolice)
     }
   }
   return rig
@@ -965,7 +988,7 @@ function handleState(msg) {
       rig.update(new THREE.Vector3(n.x, n.y, n.z), dirYaw, 0, dt2)
       // show gun if recently shot and trigger shooting animation
       const t = lastShotById.get(n.id)
-      if (t && now2 - t < 120) {
+      if (t && now2 - t < 200) { // Increased detection window
         if (rig.isPolice && rig.parts._permanentGun) {
           // Police already have permanent guns, just trigger shooting animation
           if (!rig.shooting) {
@@ -974,6 +997,14 @@ function handleState(msg) {
         } else {
           // Non-police NPCs get temporary guns
           attachGunToRightArm(rig)
+        }
+      }
+      
+      // Test: Make police shoot periodically for demonstration
+      if (rig.isPolice && rig.parts._permanentGun && !rig.shooting) {
+        // Random chance to shoot every few seconds
+        if (Math.random() < 0.01) { // 1% chance per frame
+          rig.startShooting()
         }
       }
       seen.add(n.id)
@@ -1146,8 +1177,9 @@ function attachPermanentGunToPolice(rig) {
   gunGroup.add(guard)
   
   // Position gun for proper holding (resting position)
-  gunGroup.position.set(0.1, -0.2, -0.1)
-  gunGroup.rotation.x = 0.2 // Slight downward angle when not shooting
+  gunGroup.position.set(0.15, -0.15, -0.05) // More visible position
+  gunGroup.rotation.x = 0.1 // Slight downward angle when not shooting
+  gunGroup.rotation.z = 0.1 // Slight side angle for better visibility
   
   // Attach to right arm
   rig.parts.rightArm.add(gunGroup)
