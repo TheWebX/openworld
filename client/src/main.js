@@ -371,29 +371,35 @@ function createHumanRig(palette, isPolice = false) {
         this.parts.leftArm.rotation.x = -swing * 0.8
         this.parts.rightArm.rotation.x = swing * 0.8
         
-        // Reset gun glow when not shooting
+        // Reset gun color when not shooting
         if (this.parts._permanentGun) {
           this.parts._permanentGun.traverse((child) => {
             if (child.isMesh && child.material) {
               child.material.emissive = new THREE.Color(0x000000) // No glow
+              child.material.color = new THREE.Color(0x2a2a2a) // Back to dark color
             }
           })
         }
       } else {
         // Shooting animation - raise gun and aim
         const shootProgress = this.shootTime / this.shootDuration
-        const aimHeight = Math.sin(shootProgress * Math.PI) * 1.2 // Even more pronounced animation
+        const aimHeight = Math.sin(shootProgress * Math.PI) * 1.5 // Very pronounced animation
         
-        // Raise right arm to aim (very dramatic)
-        this.parts.rightArm.rotation.x = -Math.PI/2 + aimHeight * 0.8
-        this.parts.rightArm.rotation.z = aimHeight * 0.5
+        // Raise right arm to aim (extremely dramatic)
+        this.parts.rightArm.rotation.x = -Math.PI/2 + aimHeight * 1.2
+        this.parts.rightArm.rotation.z = aimHeight * 0.8
+        
+        // Debug: Log when shooting animation is active
+        if (Math.floor(this.shootTime * 10) % 10 === 0) { // Log every 0.1 seconds
+          console.log('Police shooting animation active!', this.isPolice, 'progress:', shootProgress, 'aimHeight:', aimHeight)
+        }
         
         // Slight body lean forward when aiming
         this.parts.body.rotation.x = aimHeight * 0.15
         
-        // Left arm supports the gun (very pronounced)
-        this.parts.leftArm.rotation.x = -Math.PI/2.2 + aimHeight * 0.5
-        this.parts.leftArm.rotation.z = -aimHeight * 0.4
+        // Left arm supports the gun (extremely pronounced)
+        this.parts.leftArm.rotation.x = -Math.PI/2.0 + aimHeight * 0.8
+        this.parts.leftArm.rotation.z = -aimHeight * 0.6
         
         // Head looks forward more intently
         this.parts.head.rotation.x = pitch * 0.3 + aimHeight * 0.15
@@ -403,10 +409,11 @@ function createHumanRig(palette, isPolice = false) {
           this.parts._permanentGun.rotation.x = -0.1 + aimHeight * 0.4 // Gun points forward when shooting
           this.parts._permanentGun.position.z = -0.05 - aimHeight * 0.15 // Gun moves forward
           
-          // Add visual feedback - make gun slightly glow when shooting
+          // Add visual feedback - make gun very bright when shooting
           this.parts._permanentGun.traverse((child) => {
             if (child.isMesh && child.material) {
-              child.material.emissive = new THREE.Color(0x222200) // Slight yellow glow
+              child.material.emissive = new THREE.Color(0xffff00) // Bright yellow glow
+              child.material.color = new THREE.Color(0xff0000) // Red gun when shooting
             }
           })
         }
@@ -1011,8 +1018,8 @@ function handleState(msg) {
       
       // Test: Make police shoot periodically for demonstration
       if (rig.isPolice && rig.parts._permanentGun && !rig.shooting) {
-        // Random chance to shoot every few seconds - increased probability
-        if (Math.random() < 0.05) { // 5% chance per frame for testing
+        // Random chance to shoot every few seconds - very high probability for testing
+        if (Math.random() < 0.15) { // 15% chance per frame for testing
           rig.startShooting()
           console.log('Police test shooting triggered!', n.id)
         }
